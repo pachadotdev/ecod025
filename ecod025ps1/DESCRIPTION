@@ -1,0 +1,25 @@
+Package: ecod025ps1
+Type: Package
+Title: ECOD025 - Problem Set 1 about VAR, FA-VAR and DFM models
+Description: Using armadillo4r for a straightforward implementation of an EM algorithm and the Kalman filter for DFM.
+Version: 0.1
+Authors@R: c(
+    person(
+        given = "Mauricio",
+        family = "Vargas Sepulveda",
+        role = c("aut", "cre"),
+        email = "m.vargas.sepulveda@gmail.com",
+        comment = c(ORCID = "0000-0003-1017-7574"))
+    )
+Suggests: 
+    knitr,
+    rmarkdown
+Depends: R(>= 3.5.0)
+License: Apache License (>= 2)
+BugReports: https://github.com/pachadotdev/ecod025/issues
+URL: https://pacha.dev/ecod025
+RoxygenNote: 7.3.3
+Encoding: UTF-8
+NeedsCompilation: yes
+VignetteBuilder: knitr
+LinkingTo: cpp4r, armadillo4r
