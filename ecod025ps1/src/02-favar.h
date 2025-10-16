@@ -8,13 +8,28 @@ std::pair<Mat<double>, Mat<double>> favar_extract_factors_(const Mat<double>& X,
   // Perform SVD on X' (N x T matrix)
   Mat<double> U, V;
   vec s;
-  svd_econ(U, s, V, X_centered.t());
+  bool svd_ok = svd_econ(U, s, V, X_centered.t());
+  
+  if (!svd_ok) {
+    throw std::runtime_error("SVD decomposition failed in factor extraction");
+  }
   
   // Factor loadings (first n_factors principal components)
   Mat<double> Lambda = U.cols(0, n_factors-1);
   
   // Common factors (T x n_factors)
   Mat<double> F = X_centered * Lambda;
+  
+  // Normalize factors to have unit variance for numerical stability
+  rowvec F_var = var(F, 0, 0);
+  for (int j = 0; j < n_factors; ++j) {
+    double var_j = F_var(j);
+    if (var_j > 1e-10) {
+      double sd_j = sqrt(var_j);
+      F.col(j) /= sd_j;
+      Lambda.col(j) *= sd_j;
+    }
+  }
   
   return std::make_pair(F, Lambda);
 }
@@ -88,7 +103,18 @@ std::pair<Mat<double>, Mat<double>> favar_augmented_var_(
   }
   
   // Estimate coefficients: [B, C] = (X'X)^(-1)(X'y)
-  Mat<double> beta = solve(X.t() * X, X.t() * y_dep);
+  Mat<double> XtX = X.t() * X;
+  Mat<double> Xty = X.t() * y_dep;
+  
+  // Add small regularization for numerical stability
+  XtX += eye<Mat<double>>(XtX.n_rows, XtX.n_cols) * 1e-8;
+  
+  Mat<double> beta;
+  bool solve_ok = solve(beta, XtX, Xty);
+  
+  if (!solve_ok) {
+    throw std::runtime_error("Failed to solve augmented VAR system");
+  }
   
   // Extract factor coefficients C
   int start_idx = include_const ? 1 : 0;

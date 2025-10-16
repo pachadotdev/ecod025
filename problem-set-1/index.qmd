@@ -26,9 +26,17 @@ supply chain uncertainties continue, and growth forecasts remain fragile amid ge
 
 Provide policy recommendations for the Federal Reserve (Fed) new forecasting system.
 
+# Before running the code
+
+**Please please please open "problem-set-1.Rproj" in RStudio.**
+
+**Do not open the QMD file directly or it can re-download all the datasets to the wrong directory.**
+
 # GitHub repository
 
-All the codes and data for this problem set are available in the GitHub repository: [https://github.com/pachadotdev/ecod025](https://github.com/pachadotdev/ecod025)
+All the codes and data for this problem set are available in the GitHub repository: [https://github.com/pachadotdev/ecod025](https://github.com/pachadotdev/ecod025).
+
+The zip file with the project is here: [https://github.com/pachadotdev/ecod025/archive/refs/heads/main.zip](https://github.com/pachadotdev/ecod025/archive/refs/heads/main.zip).
 
 # Technical note
 
@@ -40,26 +48,38 @@ load pre-computed results.
 
 ```{r runmodels}
 run_models <- T
+reinstall_ecod025ps1 <- T
 repos <- "https://cran.rstudio.com"
 ```
 
 The functions were made available in the R package `ecod025ps1` which can be installed from this same repository:
 
 ```{r install, eval = run_models, warning = FALSE, message = FALSE, echo = TRUE}
+if (!require("pkgbuild")) install.packages("pkgbuild", repos = repos)
+
+build_status <- pkgbuild::check_build_tools(quiet = T)
+
+if (!build_status) {
+  stop("On Windows, you need to install the Rtools before installing dynlm. See https://cran.r-project.org/bin/windows/Rtools/")
+}
+
+if (reinstall_ecod025ps1) {
+  try(remove.packages("ecod025ps1"))
+}
+
 if (!require("ecod025ps1") && run_models) {
-  if (!require("pak")) {
-    install.packages("pak", repos = repos)
-  }
-  pak::pkg_install("pachadotdev/cpp4r")
-  pak::pkg_install("pachadotdev/armadillo4r")
+  if (!require("pak")) install.packages("pak", repos = repos)
+  if (!require("cpp4r")) pak::pkg_install("pachadotdev/cpp4r")
+  if (!require("armadillo4r")) pak::pkg_install("pachadotdev/armadillo4r")
   pak::pkg_install("pachadotdev/ecod025/ecod025ps1")
 }
 
-if (!require("dynlm") && run_models) install.packages("dynlm", repos = repos)
-
-if (!require("dynlm")) {
-  stop("On Windows, you need to install the Rtools before installing dynlm. See https://cran.r-project.org/bin/windows/Rtools/")
+if (reinstall_ecod025ps1) {
+  pak::local_install("../ecod025ps1", ask = FALSE)
+  # pak::pkg_install("pachadotdev/ecod025/ecod025ps1")
 }
+
+if (!require("dynlm") && run_models) install.packages("dynlm", repos = repos)
 
 if (run_models) {
   library(ecod025ps1)
@@ -540,7 +560,7 @@ l2 <- 6L
 l3 <- 4L
 ```
 
-The interesting excercise is to evaluate the forecasts from the VAR model by subsetting the data "T" years before the
+The interesting exercise is to evaluate the forecasts from the VAR model by subsetting the data "T" years before the
 end date and compare the predictions with the actual values. One problem in this time horizon is that we have the
 COVID-19 pandemic (2020) external shock.
 

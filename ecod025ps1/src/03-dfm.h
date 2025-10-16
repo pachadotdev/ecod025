@@ -27,15 +27,25 @@ Mat<double> dfm_unstandardize_(const Mat<double>& X_std, const rowvec& means, do
 std::pair<Mat<double>, Mat<double>> dfm_pca_init_(const Mat<double>& X, int n_factors) {
   Mat<double> U, V;
   vec s;
-  svd_econ(U, s, V, X.t());
+  
+  bool svd_ok = svd_econ(U, s, V, X.t());
+  if (!svd_ok) {
+    throw std::runtime_error("SVD decomposition failed in PCA initialization");
+  }
   
   Mat<double> Lambda = U.cols(0, n_factors-1);
   Mat<double> F = X * Lambda;
   
   // Normalize factors to have unit variance
-  vec F_var = var(F, 0, 0).t();
-  F.each_col() /= sqrt(F_var);
-  Lambda.each_col() %= sqrt(F_var);
+  rowvec F_var = var(F, 0, 0);
+  for (int j = 0; j < n_factors; ++j) {
+    double var_j = F_var(j);
+    if (var_j > 1e-10) {
+      double sd_j = sqrt(var_j);
+      F.col(j) /= sd_j;
+      Lambda.col(j) *= sd_j;
+    }
+  }
   
   return std::make_pair(F, Lambda);
 }
@@ -93,7 +103,16 @@ KalmanOutput dfm_kalman_smoother_(const Mat<double>& X, const Mat<double>& Lambd
     Mat<double> S = H * P_pred.slice(t) * H.t() + R;
     S = 0.5 * (S + S.t()); // Ensure symmetry
     
-    Mat<double> K = P_pred.slice(t) * H.t() * inv(S);
+    // Add regularization to avoid singularity
+    S += eye<Mat<double>>(N, N) * 1e-8;
+    
+    Mat<double> K;
+    bool solve_ok = solve(K, S.t(), (H * P_pred.slice(t)).t());
+    if (!solve_ok) {
+      K = P_pred.slice(t) * H.t() * inv(S);
+    } else {
+      K = K.t();
+    }
     
     F_filt.row(t) = F_pred.row(t) + (K * innov).t();
     P_filt.slice(t) = (eye<Mat<double>>(state_dim, state_dim) - K * H) * P_pred.slice(t);
@@ -101,7 +120,7 @@ KalmanOutput dfm_kalman_smoother_(const Mat<double>& X, const Mat<double>& Lambd
     
     // Log-likelihood
     double detS = det(S);
-    if (detS > 0) {
+    if (detS > 1e-10) {
       double mahal = dot(innov, solve(S, innov));
       loglik -= 0.5 * (N * log_2pi + log(detS) + mahal);
     }
@@ -195,7 +214,15 @@ DFMParams dfm_em_algorithm_(const Mat<double>& X, int n_factors, int p,
   // Initialize R
   Mat<double> X_fitted = F * Lambda.t();
   Mat<double> residuals = X - X_fitted;
-  Mat<double> R = diagmat(var(residuals, 0, 0).t());
+  vec R_diag = var(residuals, 0, 0).t();
+  
+  // Ensure R is positive definite with minimum variance
+  for (uword i = 0; i < R_diag.n_elem; ++i) {
+    if (R_diag(i) < 1e-6) {
+      R_diag(i) = 1e-6;
+    }
+  }
+  Mat<double> R = diagmat(R_diag);
   
   double prev_loglik = -datum::inf;
   
@@ -250,6 +277,10 @@ DFMParams dfm_em_algorithm_(const Mat<double>& X, int n_factors, int p,
                            (gamma(j, j) / T - 
                             as_scalar(ks.F_smooth.col(j).t() * ks.F_smooth.col(j)) / T);
         R_diag(i) += trace_term;
+      }
+      // Ensure positive definite with minimum variance
+      if (R_diag(i) < 1e-6) {
+        R_diag(i) = 1e-6;
       }
     }
     R = diagmat(R_diag);

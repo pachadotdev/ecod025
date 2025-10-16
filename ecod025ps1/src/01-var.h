@@ -46,8 +46,18 @@ Mat<double> var_estimate_(const doubles_matrix<>& y, int p, bool include_const =
   
   // Estimate VAR coefficients: A = (X'X)^(-1)(X'Y)
   Mat<double> XtX = X.t() * X;
-  Mat<double> XtX_inv = inv(XtX);
-  Mat<double> A = XtX_inv * X.t() * Y_dep;
+  
+  // Add small regularization for numerical stability
+  XtX += eye<Mat<double>>(XtX.n_rows, XtX.n_cols) * 1e-8;
+  
+  Mat<double> A;
+  bool solve_ok = solve(A, XtX, X.t() * Y_dep);
+  
+  if (!solve_ok) {
+    // Fallback to explicit inversion if solve fails
+    Mat<double> XtX_inv = inv(XtX);
+    A = XtX_inv * X.t() * Y_dep;
+  }
   
   return A;
 }
@@ -112,6 +122,14 @@ Mat<double> var_forecast_(const Mat<double>& Y, const Mat<double>& A,
   int T = Y.n_rows;
   int K = Y.n_cols;
   
+  if (T < p) {
+    throw std::runtime_error("Insufficient observations for VAR forecasting");
+  }
+  
+  if (h <= 0) {
+    throw std::runtime_error("Forecast horizon must be positive");
+  }
+  
   // Get last p observations for initialization
   Mat<double> Y_init = Y.rows(T-p, T-1);
   
@@ -143,9 +161,11 @@ Mat<double> var_forecast_(const Mat<double>& Y, const Mat<double>& A,
     forecasts.row(i) = y_forecast;
     
     // Update lagged matrix for next forecast
-    if (i < h-1) {
+    if (i < h-1 && p > 1) {
       Mat<double> new_X_lag = join_horiz(y_forecast, X_lag.cols(0, K*(p-1)-1));
       X_lag = new_X_lag;
+    } else if (p == 1) {
+      X_lag = y_forecast;
     }
   }
   
