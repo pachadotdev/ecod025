@@ -1,6 +1,6 @@
 Package: ecod025ps1
 Type: Package
-Title: ECOD025 - Problem Set 1 about VAR, FA-VAR and DFM models
+Title: ECOD025 - Problem Set 1 about VAR, FA-VAR and DFM models. Install this from the R-Universe.
 Description: Using armadillo4r for a straightforward implementation of an EM algorithm and the Kalman filter for DFM.
 Version: 0.1
 Authors@R: c(
