@@ -47,7 +47,7 @@ To run the model functions, you need to change this boolean to "TRUE", otherwise
 load pre-computed results.
 
 ```{r runmodels}
-run_models <- T
+run_models <- F
 reinstall_ecod025ps1 <- F
 repos <- "https://cran.rstudio.com"
 ```
@@ -125,12 +125,7 @@ if (!require("cmdstanr")) {
     repos = c("https://mc-stan.org/r-packages/", getOption("repos")))
 }
 
-if (!require("bayesplot")) {
-  install.packages("bayesplot", repos = repos)
-}
-
 library(cmdstanr)
-library(bayesplot)
 
 # do we need to install Stan?
 if (is.null(cmdstanr::cmdstan_path())) {
@@ -820,7 +815,7 @@ saveRDS(fit_gdpc1_favar, "data/fit_gdpc1_favar.rds")
 if (!run_models) {
   fit_cpilfesl_favar <- readRDS("data/fit_cpilfesl_favar.rds")
   fit_gdpdef_favar <- readRDS("data/fit_gdpdef_favar.rds")
-  fit_gdpc1_favar <- readRDS("data/fit_gdpc1_yy_favar.rds")
+  fit_gdpc1_favar <- readRDS("data/fit_gdpc1_favar.rds")
 }
 
 fit_predictions3 <- tibble(
@@ -942,6 +937,8 @@ dfm_data_cpilfesl <- cpilfesl_mm_subset %>%
   ) %>%
   na.omit()
 
+saveRDS(dfm_data_cpilfesl, "data/dfm_data_cpilfesl.rds")
+
 x_cpilfesl_dfm <- as.matrix(dfm_data_cpilfesl[, c("cpilfesl", "cpifood")])
 
 # Estimate DFM (1 common inflation factor from 2 variables)
@@ -962,6 +959,8 @@ dfm_data_gdpdef <- gdpdef_mm_subset %>%
   ) %>%
   na.omit()
 
+saveRDS(dfm_data_gdpdef, "data/dfm_data_gdpdef.rds")
+
 x_gdpdef_dfm <- as.matrix(dfm_data_gdpdef[, c("gdpdef", "cpifood")])
 
 fit_gdpdef_dfm <- dfm_model(
@@ -981,6 +980,8 @@ dfm_data_gdpc1 <- gdpc1_yy_subset %>%
   ) %>%
   na.omit()
 
+saveRDS(dfm_data_gdpc1, "data/dfm_data_gdpc1.rds")
+
 x_gdpc1_dfm <- as.matrix(dfm_data_gdpc1[, c("gdpgrowth", "cpifood")])
 
 fit_gdpc1_dfm <- dfm_model(
@@ -999,6 +1000,9 @@ saveRDS(fit_gdpc1_dfm, "data/fit_gdpc1_dfm.rds")
 
 ```{r dfm2, warning = FALSE, message = FALSE, echo = TRUE}
 if (!run_models) {
+  dfm_data_cpilfesl <- readRDS("data/dfm_data_cpilfesl.rds")
+  dfm_data_gdpdef <- readRDS("data/dfm_data_gdpdef.rds")
+  dfm_data_gdpc1 <- readRDS("data/dfm_data_gdpc1.rds")
   fit_cpilfesl_dfm <- readRDS("data/fit_cpilfesl_dfm.rds")
   fit_gdpdef_dfm <- readRDS("data/fit_gdpdef_dfm.rds")
   fit_gdpc1_dfm <- readRDS("data/fit_gdpc1_dfm.rds")
@@ -1309,7 +1313,17 @@ bayesian_forecasts <- bayesian_forecasts %>%
     by = c("date", "variable")
   )
 
-stan_diagnostics(bayesian_fit, data_list)
+stan_model_metrics <- stan_diagnostics(bayesian_fit, data_list)
+
+saveRDS(bayesian_forecasts, "data/bayesian_forecasts.rds")
+saveRDS(stan_model_metrics, "data/stan_model_metrics.rds")
+```
+
+```{r bonus3, fig.width=6, fig.height=6, warning = FALSE, message = FALSE, echo = TRUE}
+if (!run_models) {
+  bayesian_forecasts <- readRDS("data/bayesian_forecasts.rds")
+  stan_model_metrics <- readRDS("data/stan_model_metrics.rds")
+}
 
 clrs <- tintin_pal()(2)
 
@@ -1339,17 +1353,22 @@ cat(readLines("https://raw.githubusercontent.com/pachadotdev/ecod025/refs/heads/
 ## VAR model
 
 ```{r cpp2}
-cat(readLines("https://raw.githubusercontent.com/pachadotdev/ecod025/refs/heads/code-for-ps1/src/01-var.h"), sep = "\n")
+cat(readLines("../ecod025ps1/src/01-var.h"), sep = "\n")
 ```
 
 ## FA-VAR model
 
 ```{r cpp3}
-cat(readLines("https://raw.githubusercontent.com/pachadotdev/ecod025/refs/heads/code-for-ps1/src/02-favar.h"), sep = "\n")
+cat(readLines("../ecod025ps1/src/02-favar.h"), sep = "\n")
 ```
 
 ## DFM model
 
 ```{r cpp4}
-cat(readLines("https://raw.githubusercontent.com/pachadotdev/ecod025/refs/heads/code-for-ps1/src/03-dfm.h"), sep = "\n")
+cat(readLines("../ecod025ps1/src/03-dfm.h"), sep = "\n")
+```
+
+## Bayesian VAR model
+```{r cpp5}
+cat(readLines("minnesota-litterman-var.stan"), sep = "\n")
 ```
