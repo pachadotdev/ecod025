@@ -40,20 +40,20 @@ load pre-computed results.
 
 ```{r runmodels}
 run_models <- T
+repos <- "https://cran.rstudio.com"
 ```
 
 The functions were made available in the R package `ecod025ps1` which can be installed from this same repository:
 
 ```{r install, eval = run_models, warning = FALSE, message = FALSE, echo = TRUE}
 if (!require("ecod025ps1") && run_models) {
-  repository <- "https://cran.rstudio.com"
   if (!require("pak")) {
-    install.packages("pak", repos = repository)
+    install.packages("pak", repos = repos)
   }
   pak::pkg_install("pachadotdev/ecod025/ecod025ps1")
 }
 
-if (!require("dynlm") && run_models) install.packages("dynlm")
+if (!require("dynlm") && run_models) install.packages("dynlm", repos = repos)
 
 if (!require("dynlm")) {
   stop("On Windows, you need to install the Rtools before installing dynlm. See https://cran.r-project.org/bin/windows/Rtools/")
@@ -69,7 +69,7 @@ R package for accessing the data:
 
 ```{r data1, warning = FALSE, message = FALSE, echo = TRUE}
 if (!require("alfred")) {
-  install.packages("alfred")
+  install.packages("alfred", repos = repos)
 }
 library(alfred)
 ```
@@ -78,22 +78,22 @@ Additional packages for data manipulation and plotting:
 
 ```{r rpkgs, warning = FALSE, message = FALSE, echo = TRUE}
 if (!require("dplyr")) {
-  install.packages("dplyr")
+  install.packages("dplyr", repos = repos)
 }
 if (!require("lubridate")) {
-  install.packages("lubridate")
+  install.packages("lubridate", repos = repos)
 }
 if (!require("rlang")) {
-  install.packages("rlang")
+  install.packages("rlang", repos = repos)
 }
 if (!require("purrr")) {
-  install.packages("purrr")
+  install.packages("purrr", repos = repos)
 }
 if (!require("ggplot2")) {
-  install.packages("ggplot2")
+  install.packages("ggplot2", repos = repos)
 }
 if (!require("tintin")) {
-  install.packages("tintin")
+  install.packages("tintin", repos = repos)
 }
 
 library(dplyr)
