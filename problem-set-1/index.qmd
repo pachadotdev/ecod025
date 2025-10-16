@@ -59,24 +59,14 @@ if (!require("pkgbuild")) install.packages("pkgbuild", repos = repos)
 
 build_status <- pkgbuild::check_build_tools(quiet = T)
 
-if (!build_status) {
-  stop("On Windows, you need to install the Rtools before installing dynlm. See https://cran.r-project.org/bin/windows/Rtools/")
-}
-
 if (reinstall_ecod025ps1) {
-  try(remove.packages("ecod025ps1"))
+  if (require("ecod025ps1")) remove.packages("ecod025ps1")
 }
 
 if (!require("ecod025ps1") && run_models) {
-  if (!require("pak")) install.packages("pak", repos = repos)
-  if (!require("cpp4r")) pak::pkg_install("pachadotdev/cpp4r")
-  if (!require("armadillo4r")) pak::pkg_install("pachadotdev/armadillo4r")
-  pak::pkg_install("pachadotdev/ecod025/ecod025ps1")
-}
-
-if (reinstall_ecod025ps1) {
-  pak::local_install("../ecod025ps1", ask = FALSE)
-  # pak::pkg_install("pachadotdev/ecod025/ecod025ps1")
+  if (!require("cpp4r")) install.packages("cpp4r", repos = "https://pachadotdev.r-universe.dev")
+  if (!require("armadillo4r")) install.packages("armadillo4r", repos = "https://pachadotdev.r-universe.dev")
+  install.packages("ecod025ps1", repos = "https://pachadotdev.r-universe.dev")
 }
 
 if (!require("dynlm") && run_models) install.packages("dynlm", repos = repos)
