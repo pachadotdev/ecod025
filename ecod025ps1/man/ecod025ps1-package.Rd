@@ -11,8 +11,8 @@ Using armadillo4r for a straightforward implementation of an EM algorithm and th
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://WEBSITE.COM}
-  \item Report bugs at \url{https://github.com/USERNAME/PKGNAME/issues}
+  \item \url{https://pacha.dev/ecod025}
+  \item Report bugs at \url{https://github.com/pachadotdev/ecod025/issues}
 }
 
 }

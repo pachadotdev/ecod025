@@ -2,10 +2,25 @@
 % Please edit documentation in R/cpp4r.R
 \name{favar_model}
 \alias{favar_model}
-\title{Main FAVAR estimation function}
+\title{Factor-Augmented VAR (FA-VAR) Model}
 \usage{
-favar_model(y, x, n_factors, p_y, p_f, include_const, forecast_h)
+favar_model(y, n_lags, n_factors, p_y, p_f, include_const, forecast_h)
+}
+\arguments{
+\item{y}{Time series vector (T x 1)}
+
+\item{n_lags}{Number of lags of y to include in X for factor extraction}
+
+\item{n_factors}{Number of latent factors to extract (r < n_lags + 1)}
+
+\item{p_y}{VAR lag order for y dynamics}
+
+\item{p_f}{VAR lag order for factor dynamics}
+
+\item{include_const}{Include constant term in VARs}
+
+\item{forecast_h}{Forecast horizon (0 for no forecast)}
 }
 \description{
-Main FAVAR estimation function
+Estimates a FA-VAR model using PCA for factor extraction.
 }

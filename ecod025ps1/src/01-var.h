@@ -1,8 +1,4 @@
-/*
-==============================================
-Vector Autoregressions (VAR)
-===========================================
-*/
+/* Vector Autoregressions (VAR) */
 
 // Create lagged matrix for VAR model
 Mat<double> create_lags_(const Mat<double>& Y, int p) {
@@ -157,6 +153,11 @@ Mat<double> var_forecast_(const Mat<double>& Y, const Mat<double>& A,
 }
 /* roxygen
 @title Main VAR estimation function that returns everything
+@description Estimates a VAR model using OLS.
+@param y Time series vector (T x 1)
+@param p Lag order
+@param include_const Include constant term in VAR
+@param forecast_h Forecast horizon (0 for no forecast)
 @export
 */
 [[cpp4r::register]] list var_model(const doubles_matrix<>& y, int p, 
@@ -188,33 +189,29 @@ Mat<double> var_forecast_(const Mat<double>& Y, const Mat<double>& A,
   double aic = aic_metric(residuals, n_params);
   
   // Prepare results list
-  writable::list result(9);
+  writable::list result;
 
-  result[0] = as_doubles_matrix(A);
-  result[1] = as_doubles_matrix(Y_fitted);
-  result[2] = as_doubles_matrix(residuals);
-  result[3] = as_doubles_matrix(Sigma);
-  result[4] = as_doubles_matrix(F);
-  result[5] = cpp4r::as_sexp(p);
-  result[6] = cpp4r::as_sexp(K);
-  result[7] = cpp4r::as_sexp(T - p);  // Effective sample size
-  result[8] = cpp4r::as_sexp(include_const);
+  result.push_back({"coefficients"_nm = as_doubles_matrix(A)});
+  result.push_back({"fitted_values"_nm = as_doubles_matrix(Y_fitted)});
+  result.push_back({"residuals"_nm = as_doubles_matrix(residuals)});
+  result.push_back({"sigma"_nm = as_doubles_matrix(Sigma)});
+  result.push_back({"companion_matrix"_nm = as_doubles_matrix(F)});
 
-  result.names() = {"coefficients", "fitted_values", "residuals", "sigma", 
-                         "companion_matrix", "lag_order", "n_variables", 
-                         "n_obs", "include_const"};
+  result.push_back({"lag_order"_nm = cpp4r::as_sexp(p)});
+  result.push_back({"n_variables"_nm = cpp4r::as_sexp(K)});
+  result.push_back({"n_obs"_nm = cpp4r::as_sexp(T - p)});  // Effective sample size
+  result.push_back({"include_const"_nm = cpp4r::as_sexp(include_const)});
+  result.push_back({"rmsfe"_nm = cpp4r::as_sexp(rmsfe(Y.rows(p, T-1), Y_fitted))});
+  
+  result.push_back({"mae"_nm = cpp4r::as_sexp(mae(Y.rows(p, T-1), Y_fitted))});
+  result.push_back({"aic"_nm = cpp4r::as_sexp(aic)});
   
   // Add forecasts if requested
   if (forecast_h > 0) {
     Mat<double> forecasts = var_forecast_(Y, A, p, forecast_h, include_const);
     result.push_back({"forecasts"_nm = as_doubles_matrix(forecasts)});
     result.push_back({"forecast_horizon"_nm = cpp4r::as_sexp(forecast_h)});
-  }
-
-  // Add model metrics
-  result.push_back({"rmsfe"_nm = cpp4r::as_sexp(rmsfe(Y.rows(p, T-1), Y_fitted))});
-  result.push_back({"mae"_nm = cpp4r::as_sexp(mae(Y.rows(p, T-1), Y_fitted))});
-  result.push_back({"aic"_nm = cpp4r::as_sexp(aic)});
+  }  
   
   return result;
 }

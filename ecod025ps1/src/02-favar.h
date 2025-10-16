@@ -1,10 +1,6 @@
-/*
-==============================================
-Factor-Augmented VAR (FA-VAR)
-==============================================
-*/
+// Factor-Augmented VAR (FA-VAR)
 
-// Extract factors using PCA from large dataset
+// Extract factors using PCA from time series data
 std::pair<Mat<double>, Mat<double>> favar_extract_factors_(const Mat<double>& X, int n_factors) {  
   // Center the data
   Mat<double> X_centered = X.each_row() - mean(X, 0);
@@ -24,51 +20,23 @@ std::pair<Mat<double>, Mat<double>> favar_extract_factors_(const Mat<double>& X,
 }
 
 // Estimate factor VAR: F_t = Phi_1*F_{t-1} + ... + Phi_p*F_{t-p} + v_t
-Mat<double> favar_factor_var_(const Mat<double>& F, int p_f, bool include_const = true) {
-  int N = F.n_rows;
-  int n_factors = F.n_cols;
+Mat<double> favar_factor_var_(const Mat<double>& F, int p, bool include_const = false) {
+  int T = F.n_rows;
 
-  // Handle p_f = 0 case: no factor dynamics, just return constant term
-  if (p_f == 0) {
-    if (include_const) {
-      // Return mean of factors as constant
-      return mean(F, 0).t();  // Column vector of means
-    } else {
-      // Return zeros
-      return zeros<Mat<double>>(1, n_factors);
-    }
-  }
-
-  if (N <= p_f) {
-    throw std::runtime_error("Sample size must be greater than factor lag order p_f");
+  if (p == 0 || T <= p) {
+    throw std::runtime_error("Invalid lag order for factor VAR");
   }
   
-  // Create lagged factors
-  Mat<double> F_lag = create_lags_(F, p_f);
-  
-  // Dependent variable (after losing p_f observations)
-  Mat<double> F_dep = F.rows(p_f, F.n_rows-1);
-  
-  // Add constant if requested
-  Mat<double> X;
-  if (include_const) {
-    Mat<double> ones(F_lag.n_rows, 1, fill::ones);
-    X = join_horiz(ones, F_lag);
-  } else {
-    X = F_lag;
-  }
-  
-  // Estimate factor VAR coefficients: Phi = (X'X)^(-1)(X'F)
-  Mat<double> XtX = X.t() * X;
-  Mat<double> XtX_inv = inv(XtX);
-  Mat<double> Phi = XtX_inv * X.t() * F_dep;
+  // Use existing VAR estimation function
+  Mat<double> Phi = var_estimate_(as_doubles_matrix(F), p, include_const);
   
   return Phi;
 }
 
-// Estimate augmented VAR: y_t = B(L)*y_{t-1} + C(L)*F_t + u_t
-std::tuple<Mat<double>, Mat<double>> favar_augmented_var_(
-    const Mat<double>& y, const Mat<double>& F, int p_y, int p_f, bool include_const = true) {
+// Estimate augmented VAR: y_t = B(L)*y_{t-1} + C(L)*F_{t-1} + u_t
+// Uses only LAGGED factors to avoid data leakage
+std::pair<Mat<double>, Mat<double>> favar_augmented_var_(
+    const Mat<double>& y, const Mat<double>& F, int p_y, int p_f, bool include_const = false) {
   
   int T = y.n_rows;
   int K = y.n_cols;
@@ -76,45 +44,36 @@ std::tuple<Mat<double>, Mat<double>> favar_augmented_var_(
   int max_p = std::max(p_y, p_f);
   
   if (T <= max_p) {
-    throw std::runtime_error("Sample size must be greater than maximum lag order");
+    throw std::runtime_error("Sample size must be greater than lag order");
   }
   
   // Create lagged y variables
   Mat<double> y_lag;
-  if (p_y > 0) {
-    y_lag = create_lags_(y, p_y);
-    // Align with maximum lag
-    if (p_y < max_p) {
-      Mat<double> y_lag_aligned = y_lag.rows(max_p - p_y, y_lag.n_rows - 1);
-      y_lag = y_lag_aligned;
-    }
-  }
-  
-  // Create lagged and contemporaneous factors
-  Mat<double> F_regressors;
-  if (p_f > 0) {
-    // Include lagged factors: F_{t-1}, ..., F_{t-p_f}
-    Mat<double> F_lag = create_lags_(F, p_f);
-    // Align with maximum lag
-    if (p_f < max_p) {
-      Mat<double> F_lag_aligned = F_lag.rows(max_p - p_f, F_lag.n_rows - 1);
-      F_lag = F_lag_aligned;
-    }
-    
-    // Include contemporaneous factors: F_t
-    Mat<double> F_contemp = F.rows(max_p, F.n_rows - 1);
-    
-    // Combine: [F_t, F_{t-1}, ..., F_{t-p_f}]
-    F_regressors = join_horiz(F_contemp, F_lag);
-  } else {
-    // Only contemporaneous factors
-    F_regressors = F.rows(max_p, F.n_rows - 1);
-  }
-  
-  // Dependent variable (after losing max_p observations)
   Mat<double> y_dep = y.rows(max_p, T - 1);
   
-  // Combine regressors: [y_{t-1}, ..., y_{t-p_y}, F_t, F_{t-1}, ..., F_{t-p_f}]
+  if (p_y > 0) {
+    y_lag = create_lags_(y, p_y);
+    // Align if needed
+    if (p_y < max_p) {
+      y_lag = y_lag.rows(max_p - p_y, y_lag.n_rows - 1);
+    }
+  }
+  
+  // Create factor regressors: [F_{t-1}, ..., F_{t-p_f}] (only lagged factors)
+  Mat<double> F_regressors;
+  
+  if (p_f > 0) {
+    Mat<double> F_lag = create_lags_(F, p_f);
+    // Align if needed
+    if (p_f < max_p) {
+      F_lag = F_lag.rows(max_p - p_f, F_lag.n_rows - 1);
+    }
+    F_regressors = F_lag;
+  } else {
+    throw std::runtime_error("p_f must be at least 1 for FAVAR");
+  }
+  
+  // Combine regressors: [y_{t-1}, ..., y_{t-p_y}, F_{t-1}, ..., F_{t-p_f}]
   Mat<double> X;
   if (p_y > 0) {
     X = join_horiz(y_lag, F_regressors);
@@ -129,58 +88,56 @@ std::tuple<Mat<double>, Mat<double>> favar_augmented_var_(
   }
   
   // Estimate coefficients: [B, C] = (X'X)^(-1)(X'y)
-  Mat<double> XtX = X.t() * X;
-  Mat<double> XtX_inv = inv(XtX);
-  Mat<double> beta = XtX_inv * X.t() * y_dep;
+  Mat<double> beta = solve(X.t() * X, X.t() * y_dep);
   
-  // Split coefficients into B (for y lags) and C (for factors)
-  Mat<double> B, C;
+  // Extract factor coefficients C
   int start_idx = include_const ? 1 : 0;
+  int factor_start = start_idx + (p_y > 0 ? K * p_y : 0);
+  Mat<double> C = beta.rows(factor_start, beta.n_rows - 1);
   
-  if (p_y > 0) {
-    B = beta.rows(start_idx, start_idx + K * p_y - 1);
-    C = beta.rows(start_idx + K * p_y, beta.n_rows - 1);
-  } else {
-    B = zeros<Mat<double>>(0, K);  // No y lags
-    C = beta.rows(start_idx, beta.n_rows - 1);
-  }
-  
-  return std::make_tuple(beta, C);  // Return full coefficient matrix and factor coefficients
+  return std::make_pair(beta, C);
 }
 
 // Compute FAVAR fitted values and residuals
 std::pair<Mat<double>, Mat<double>> favar_fitted_resid_(
     const Mat<double>& y, const Mat<double>& F, const Mat<double>& beta,
-    int p_y, int p_f, bool include_const = true) {
+    int p_y, int p_f, bool include_const = false) {
   
   int T = y.n_rows;
   int max_p = std::max(p_y, p_f);
   
-  // Create same regressor matrix as in estimation
-  Mat<double> y_lag;
+  // Reconstruct regressor matrix
+  Mat<double> y_dep = y.rows(max_p, T - 1);
+  Mat<double> X;
+  
   if (p_y > 0) {
-    y_lag = create_lags_(y, p_y);
+    Mat<double> y_lag = create_lags_(y, p_y);
     if (p_y < max_p) {
       y_lag = y_lag.rows(max_p - p_y, y_lag.n_rows - 1);
     }
-  }
-  
-  Mat<double> F_regressors;
-  if (p_f > 0) {
-    Mat<double> F_lag = create_lags_(F, p_f);
-    if (p_f < max_p) {
-      F_lag = F_lag.rows(max_p - p_f, F_lag.n_rows - 1);
+    
+    Mat<double> F_regressors;
+    
+    if (p_f > 0) {
+      Mat<double> F_lag = create_lags_(F, p_f);
+      if (p_f < max_p) {
+        F_lag = F_lag.rows(max_p - p_f, F_lag.n_rows - 1);
+      }
+      F_regressors = F_lag;
     }
-    Mat<double> F_contemp = F.rows(max_p, F.n_rows - 1);
-    F_regressors = join_horiz(F_contemp, F_lag);
-  } else {
-    F_regressors = F.rows(max_p, F.n_rows - 1);
-  }
-  
-  Mat<double> X;
-  if (p_y > 0) {
+    
     X = join_horiz(y_lag, F_regressors);
   } else {
+    Mat<double> F_regressors;
+    
+    if (p_f > 0) {
+      Mat<double> F_lag = create_lags_(F, p_f);
+      if (p_f < max_p) {
+        F_lag = F_lag.rows(max_p - p_f, F_lag.n_rows - 1);
+      }
+      F_regressors = F_lag;
+    }
+    
     X = F_regressors;
   }
   
@@ -189,9 +146,6 @@ std::pair<Mat<double>, Mat<double>> favar_fitted_resid_(
     X = join_horiz(ones, X);
   }
   
-  // Dependent variable
-  Mat<double> y_dep = y.rows(max_p, T - 1);
-  
   // Compute fitted values and residuals
   Mat<double> y_fitted = X * beta;
   Mat<double> residuals = y_dep - y_fitted;
@@ -199,64 +153,48 @@ std::pair<Mat<double>, Mat<double>> favar_fitted_resid_(
   return std::make_pair(y_fitted, residuals);
 }
 
-// FAVAR forecasting
+// FAVAR forecasting with lagged factors only
 Mat<double> favar_forecast_(const Mat<double>& y, const Mat<double>& F,
                            const Mat<double>& beta_y, const Mat<double>& Phi_f,
-                           int p_y, int p_f, int h, bool include_const = true) {
+                           int p_y, int p_f, int h, bool include_const = false) {
   
   int T = y.n_rows;
   int K = y.n_cols;
   int n_factors = F.n_cols;
-
-  int Phi_r = Phi_f.n_rows;
-  int Phi_c = Phi_f.n_cols;
   
   // Initialize forecasts
   Mat<double> y_forecast(h, K);
   Mat<double> F_forecast(h, n_factors);
   
-  // Get initial conditions
-  Mat<double> y_init = y.rows(T - std::max(p_y, 1), T - 1);
+  // Step 1: Forecast factors using factor VAR
+  Mat<double> F_init = F.rows(T - p_f, T - 1);
+  Mat<double> F_current = vectorise(F_init.t()).t();
   
-  // Handle factor forecasting based on p_f
-  if (p_f == 0) {
-    // No factor dynamics: use constant (mean or zero)
-    for (int i = 0; i < h; ++i) {
-      if (Phi_r == 1 && Phi_c == n_factors) {
-        F_forecast.row(i) = Phi_f;  // Constant term
-      } else {
-        F_forecast.row(i) = zeros<Mat<double>>(1, n_factors);
-      }
+  for (int i = 0; i < h; ++i) {
+    Mat<double> X_f;
+    if (include_const) {
+      Mat<double> ones(1, 1, fill::ones);
+      X_f = join_horiz(ones, F_current);
+    } else {
+      X_f = F_current;
     }
-  } else {
-    // Forecast factors using factor VAR
-    Mat<double> F_init = F.rows(T - std::max(p_f, 1), T - 1);
-    Mat<double> F_current = vectorise(F_init.t()).t();
     
-    for (int i = 0; i < h; ++i) {
-      Mat<double> X_f;
-      if (include_const) {
-        Mat<double> ones(1, 1, fill::ones);
-        X_f = join_horiz(ones, F_current);
-      } else {
-        X_f = F_current;
-      }
-      
-      Mat<double> F_pred = X_f * Phi_f;
-      F_forecast.row(i) = F_pred;
-      
-      // Update for next iteration
-      if (i < h - 1 && p_f > 1) {
-        Mat<double> new_F_current = join_horiz(F_pred, F_current.cols(0, n_factors * (p_f - 1) - 1));
-        F_current = new_F_current;
-      } else if (p_f == 1) {
-        F_current = F_pred;
-      }
+    Mat<double> F_pred = X_f * Phi_f;
+    F_forecast.row(i) = F_pred;
+    
+    // Update state for next iteration
+    if (i < h - 1 && p_f > 1) {
+      F_current = join_horiz(F_pred, F_current.cols(0, n_factors * (p_f - 1) - 1));
+    } else if (p_f == 1) {
+      F_current = F_pred;
     }
   }
   
-  // Now forecast y using factor forecasts
-  Mat<double> y_current = vectorise(y_init.t()).t();
+  // Step 2: Forecast y using forecasted factors (lagged factors only)
+  Mat<double> y_init = y.rows(T - std::max(p_y, 1), T - 1);
+  Mat<double> y_current = (p_y > 0) ? vectorise(y_init.t()).t() : Mat<double>();
+  
+  // Extend F with forecasts for easier indexing
   Mat<double> F_extended = join_vert(F, F_forecast);
   
   for (int i = 0; i < h; ++i) {
@@ -267,24 +205,29 @@ Mat<double> favar_forecast_(const Mat<double>& y, const Mat<double>& F,
       X_y = y_current;
     }
     
-    // Add factors (contemporaneous and lagged)
-    Mat<double> F_for_pred = F_extended.row(T + i);
+    // Add lagged factors: F_{T+i-1}, ..., F_{T+i-p_f} (no contemporaneous factor)
+    Mat<double> F_current_forecast;
     if (p_f > 0) {
       for (int lag = 1; lag <= p_f; ++lag) {
         if (T + i - lag >= 0) {
           Mat<double> F_lag_t = F_extended.row(T + i - lag);
-          F_for_pred = join_horiz(F_for_pred, F_lag_t);
+          if (lag == 1) {
+            F_current_forecast = F_lag_t;
+          } else {
+            F_current_forecast = join_horiz(F_current_forecast, F_lag_t);
+          }
         }
       }
     }
     
+    // Combine y lags and factors
     if (p_y > 0) {
-      X_y = join_horiz(X_y, F_for_pred);
+      X_y = join_horiz(X_y, F_current_forecast);
     } else {
-      X_y = F_for_pred;
+      X_y = F_current_forecast;
     }
     
-    // Add constant
+    // Add constant if needed
     if (include_const) {
       Mat<double> ones(1, 1, fill::ones);
       X_y = join_horiz(ones, X_y);
@@ -294,9 +237,8 @@ Mat<double> favar_forecast_(const Mat<double>& y, const Mat<double>& F,
     y_forecast.row(i) = y_pred;
     
     // Update y_current for next iteration
-    if (i < h - 1 && p_y > 1) {
-      Mat<double> new_y_current = join_horiz(y_pred, y_current.cols(0, K * (p_y - 1) - 1));
-      y_current = new_y_current;
+    if (p_y > 1 && i < h - 1) {
+      y_current = join_horiz(y_pred, y_current.cols(0, K * (p_y - 1) - 1));
     } else if (p_y == 1) {
       y_current = y_pred;
     }
@@ -306,52 +248,66 @@ Mat<double> favar_forecast_(const Mat<double>& y, const Mat<double>& F,
 }
 
 /* roxygen
-@title Main FAVAR estimation function
+@title Factor-Augmented VAR (FA-VAR) Model
+@description Estimates a FA-VAR model using PCA for factor extraction.
+@param y Time series vector (T x 1)
+@param n_lags Number of lags of y to include in X for factor extraction
+@param n_factors Number of latent factors to extract (r < n_lags + 1)
+@param p_y VAR lag order for y dynamics
+@param p_f VAR lag order for factor dynamics
+@param include_const Include constant term in VARs
+@param forecast_h Forecast horizon (0 for no forecast)
 @export
 */
-[[cpp4r::register]] list favar_model(const doubles_matrix<>& y, const doubles_matrix<>& x,
+[[cpp4r::register]] list favar_model(const doubles_matrix<>& y, int n_lags,
                                      int n_factors, int p_y = 1, int p_f = 1,
-                                     bool include_const = true, int forecast_h = 0) {
+                                     bool include_const = false, int forecast_h = 0) {
   
   Mat<double> Y = as_Mat(y);
-  Mat<double> X = as_Mat(x);
-  
   int T = Y.n_rows;
   int K = Y.n_cols;
-  int N = X.n_rows;
-  int P = X.n_cols;
   
-  if (T != N) {
-    throw std::runtime_error("y and X must have the same number of observations");
+  if (K != 1) {
+    throw std::runtime_error("FA-VAR requires univariate y (single column)");
   }
   
-  if (T <= std::max(p_y, p_f)) {
-    throw std::runtime_error("Sample size must be greater than maximum lag order");
+  if (T <= n_lags + std::max(p_y, p_f)) {
+    throw std::runtime_error("Insufficient observations for lags");
   }
   
-  if (n_factors >= P) {
-    throw std::runtime_error("Number of factors must be less than number of X variables");
+  // Step 1: Create X matrix [y_t, y_{t-1}, ..., y_{t-n_lags}]
+  Mat<double> X_lags = create_lags_(Y, n_lags);
+  Mat<double> Y_contemp = Y.rows(n_lags, T - 1);
+  Mat<double> X = join_horiz(Y_contemp, X_lags);
+  
+  int N = X.n_cols;  // n_lags + 1
+  
+  if (n_factors >= N) {
+    throw std::runtime_error("Number of factors must be less than number of variables in X");
   }
   
-  // Step 1: Extract factors from large dataset X
+  // Step 2: Extract factors from X using PCA
   auto factor_result = favar_extract_factors_(X, n_factors);
   Mat<double> F = factor_result.first;
   Mat<double> Lambda = factor_result.second;
   
-  // Step 2: Estimate factor VAR
+  // Step 3: Estimate factor VAR
   Mat<double> Phi = favar_factor_var_(F, p_f, include_const);
   
-  // Step 3: Estimate augmented VAR
-  auto var_result = favar_augmented_var_(Y, F, p_y, p_f, include_const);
-  Mat<double> beta = std::get<0>(var_result);
-  Mat<double> C = std::get<1>(var_result);
+  // Step 4: Estimate augmented VAR (y on its lags + lagged factors only)
+  // Need to align y with F (both start at observation n_lags)
+  Mat<double> Y_aligned = Y.rows(n_lags, T - 1);
   
-  // Step 4: Compute fitted values and residuals
-  auto fitted_resid = favar_fitted_resid_(Y, F, beta, p_y, p_f, include_const);
+  auto var_result = favar_augmented_var_(Y_aligned, F, p_y, p_f, include_const);
+  Mat<double> beta = var_result.first;
+  Mat<double> C = var_result.second;
+  
+  // Step 5: Compute fitted values and residuals
+  auto fitted_resid = favar_fitted_resid_(Y_aligned, F, beta, p_y, p_f, include_const);
   Mat<double> y_fitted = fitted_resid.first;
   Mat<double> residuals = fitted_resid.second;
   
-  // Compute residual covariance matrix
+  // Compute residual covariance
   Mat<double> Sigma = (residuals.t() * residuals) / (residuals.n_rows - beta.n_rows);
   
   // Compute factor residuals
@@ -360,46 +316,46 @@ Mat<double> favar_forecast_(const Mat<double>& y, const Mat<double>& F,
   Mat<double> Omega = (F_residuals.t() * F_residuals) / (F_residuals.n_rows - Phi.n_rows);
   
   // Compute AIC
-  int n_params = beta.n_rows * K;  // Total number of parameters in augmented VAR
+  int n_params = beta.n_rows * K;
   double aic = aic_metric(residuals, n_params);
   
   // Prepare results list
-  writable::list result(16);
+  writable::list result;
+  
+  result.push_back({"coefficients"_nm = as_doubles_matrix(beta)});
+  result.push_back({"factor_coefficients"_nm = as_doubles_matrix(Phi)});
+  result.push_back({"factor_loadings"_nm = as_doubles_matrix(Lambda)});
+  result.push_back({"factors"_nm = as_doubles_matrix(F)});
+  result.push_back({"fitted_values"_nm = as_doubles_matrix(y_fitted)});
 
-  result[0] = as_doubles_matrix(beta);
-  result[1] = as_doubles_matrix(Phi);
-  result[2] = as_doubles_matrix(Lambda);
-  result[3] = as_doubles_matrix(F);
-  result[4] = as_doubles_matrix(y_fitted);
-  result[5] = as_doubles_matrix(residuals);
-  result[6] = as_doubles_matrix(F_residuals);
-  result[7] = as_doubles_matrix(Sigma);
-  result[8] = as_doubles_matrix(Omega);
-  result[9] = cpp4r::as_sexp(n_factors);
-  result[10] = cpp4r::as_sexp(p_y);
-  result[11] = cpp4r::as_sexp(p_f);
-  result[12] = cpp4r::as_sexp(K);
-  result[13] = cpp4r::as_sexp(N);
-  result[14] = cpp4r::as_sexp(T - std::max(p_y, p_f));
-  result[15] = cpp4r::as_sexp(include_const);
+  result.push_back({"residuals"_nm = as_doubles_matrix(residuals)});
+  result.push_back({"factor_residuals"_nm = as_doubles_matrix(F_residuals)});
+  result.push_back({"sigma"_nm = as_doubles_matrix(Sigma)});
+  result.push_back({"omega"_nm = as_doubles_matrix(Omega)});
+  result.push_back({"n_factors"_nm = cpp4r::as_sexp(n_factors)});
 
-  result.names() = {"coefficients", "factor_coefficients", "factor_loadings", "factors",
-                    "fitted_values", "residuals", "factor_residuals", "sigma", "omega",
-                    "n_factors", "lag_order_y", "lag_order_f", "n_variables", "n_observables",
-                    "n_obs", "include_const"};
+  result.push_back({"n_lags"_nm = cpp4r::as_sexp(n_lags)});
+  result.push_back({"lag_order_y"_nm = cpp4r::as_sexp(p_y)});
+  result.push_back({"lag_order_f"_nm = cpp4r::as_sexp(p_f)});
+  result.push_back({"n_obs"_nm = cpp4r::as_sexp(y_fitted.n_rows)});
+  result.push_back({"include_const"_nm = cpp4r::as_sexp(include_const)});
+
+  // Compute RMSFE and MAE using helper functions
+  // Need to align Y_aligned with fitted values (both start after max_p lags)
+  int max_p = std::max(p_y, p_f);
+  Mat<double> Y_actual = Y_aligned.rows(max_p, Y_aligned.n_rows - 1);
+  
+  // result.push_back({"observed_values"_nm = as_doubles_matrix(Y_actual)});
+  result.push_back({"rmsfe"_nm = cpp4r::as_sexp(rmsfe(Y_actual, y_fitted))});
+  result.push_back({"mae"_nm = cpp4r::as_sexp(mae(Y_actual, y_fitted))});
+  result.push_back({"aic"_nm = cpp4r::as_sexp(aic)});
   
   // Add forecasts if requested
   if (forecast_h > 0) {
-    Mat<double> forecasts = favar_forecast_(Y, F, beta, Phi, p_y, p_f, forecast_h, include_const);
+    Mat<double> forecasts = favar_forecast_(Y_aligned, F, beta, Phi, p_y, p_f, forecast_h, include_const);
     result.push_back({"forecasts"_nm = as_doubles_matrix(forecasts)});
     result.push_back({"forecast_horizon"_nm = cpp4r::as_sexp(forecast_h)});
   }
-
-  // Add model metrics
-  result.push_back({"rmsfe"_nm = cpp4r::as_sexp(rmsfe(Y.rows(std::max(p_y, p_f), T-1), y_fitted))});
-  result.push_back({"mae"_nm = cpp4r::as_sexp(mae(Y.rows(std::max(p_y, p_f), T-1), y_fitted))});
-  result.push_back({"aic"_nm = cpp4r::as_sexp(aic)});
   
   return result;
 }
-

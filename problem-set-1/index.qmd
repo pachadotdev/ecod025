@@ -39,7 +39,7 @@ To run the model functions, you need to change this boolean to "TRUE", otherwise
 load pre-computed results.
 
 ```{r runmodels}
-run_models <- F
+run_models <- T
 ```
 
 The functions were made available in the R package `ecod025ps1` which can be installed from this same repository:
@@ -47,7 +47,9 @@ The functions were made available in the R package `ecod025ps1` which can be ins
 ```{r install, eval = run_models, warning = FALSE, message = FALSE, echo = TRUE}
 if (!require("ecod025ps1") && run_models) {
     repository <- "https://cran.rstudio.com"
-    if (!require("pak")) install.packages("pak", repos = repository)
+    if (!require("pak")) {
+        install.packages("pak", repos = repository)
+    }
     pak::pkg_install("pachadotdev/ecod025/ecod025ps1")
 
     if (!require("dynlm")) install.packages("dynlm")
@@ -62,19 +64,33 @@ if (run_models) {
 R package for accessing the data:
 
 ```{r data1, warning = FALSE, message = FALSE, echo = TRUE}
-if (!require("alfred")) install.packages("alfred")
+if (!require("alfred")) {
+    install.packages("alfred")
+}
 library(alfred)
 ```
 
 Additional packages for data manipulation and plotting:
 
 ```{r rpkgs, warning = FALSE, message = FALSE, echo = TRUE}
-if (!require("dplyr")) install.packages("dplyr")
-if (!require("lubridate")) install.packages("lubridate")
-if (!require("rlang")) install.packages("rlang")
-if (!require("purrr")) install.packages("purrr")
-if (!require("ggplot2")) install.packages("ggplot2")
-if (!require("tintin")) install.packages("tintin")
+if (!require("dplyr")) {
+    install.packages("dplyr")
+}
+if (!require("lubridate")) {
+    install.packages("lubridate")
+}
+if (!require("rlang")) {
+    install.packages("rlang")
+}
+if (!require("purrr")) {
+    install.packages("purrr")
+}
+if (!require("ggplot2")) {
+    install.packages("ggplot2")
+}
+if (!require("tintin")) {
+    install.packages("tintin")
+}
 
 library(dplyr)
 library(lubridate)
@@ -91,7 +107,7 @@ library(tintin)
 $\text{VAR}(p)$ for inflation ($\pi_t$) and growth ($g_t$):
 
 $$
-y_t = A_1 y_{t-1} + \ldots + Ap y_{t-p} + u_t,\: y_t = [\pi_t, g_t]^T.
+y_t = A_1 y_{t-1} + \ldots + Ap y_{t-p} + u_t = A(L) y_t + u_t,\: y_t = [\pi_t, g_t]^T.
 $$
 
 ## Factor-Augmented VAR (FA-VAR)
@@ -108,10 +124,129 @@ $$
 
 $$
 \begin{aligned}
-X_t &= \Lambda F_t + e_t,\: e_t \sim N(0, R), \cr
+X_t &= \Lambda F_t + u_t,\: u_t \sim N(0, R), \cr
 F_t &= AF_{t-1} + \eta_t,\: \eta_t \sim N(0, Q).
 \end{aligned}
 $$
+
+For DFM, we consider VAR models that are identified and that can be written using lag polynomials such that besides $F_t$ lagged definition we have
+
+$$
+\begin{aligned}
+A(L) F_t &= v_t \cr
+B(L) u_t &= e_t,
+\end{aligned}
+$$
+
+where $A(L)$ and $B(L)$ are lag polynomials with $p$ and $q$ lags, respectively [@hansen22].
+
+To avoid identification issues, we will restrict the lag polynomial $B(L)$ to be diagonal.
+
+Defining the inverse lag operators
+
+$$
+\begin{aligned}
+D(L) &= A(L)^{-1} \cr
+C(L) &= B(L)^{-1}
+\end{aligned},
+$$
+
+then we have
+
+$$
+\begin{aligned}
+X_t &= \Lambda F_t + u_t \cr
+\implies C(L) X_t &= C(L) \Lambda F_t + C(L) u_t
+\implies C(L) X_t &= C(L) \Lambda D(L) v_t + e_t \cr
+\implies C(L) X_t &= \Lambda(L) v_t + e_t.
+\end{aligned}
+$$
+
+Furthermore, we will restrict $\Lambda(L) = C(L) \Lambda D(L)$ to be a polynomial of $l$ lags.
+
+The static form of the dynamic model is
+
+$$
+C(L) X_t = HV_t + e_t
+$$
+
+for a matrix $H$ with dimensions $N \times rl$ columns provided that $X_t$ and u_t$ are $N \times 1$, $\Lambda$ is $N \times r$ ($r < N$), and $F_t$ is $r \times 1$.
+
+To avoid scaling issues, we will transform the elements of $X_t$ to have mean 0 and common variance.
+
+## State-space representation
+
+### Vector Autoregressions (VAR)
+
+Model specification (reduced form):
+
+  * $y_t = A(L) \cdot y_t + u_t$
+
+State-space form (companion representation):
+
+  * Observation:  $y_t = [I_K, 0, \ldots, 0] \cdot \chi_t + u_t$
+  * Transition:   $\chi_t = F \cdot \chi_{t-1} + \eta_t$
+  
+where:
+  - $\chi_t = [y_t', y_{t-1}', \ldots, y_{t-p+1}']'$ is the state vector ($Kp \times 1$) and $F$ is the companion matrix ($Kp \times Kp$)
+  - $y_t$ is $K \times 1$ (observed variables)
+  - $A_i$ are $K \times K$ (coefficient matrices for $i = 1, \ldots, p$)
+  - $u_t \sim N(0, \Sigma)$ (error term)
+  - $\Sigma$ is $K \times K$ (covariance matrix)
+
+Estimation: Equation-by-equation OLS
+
+### Factor-Augmented VAR (FA-VAR)
+
+Model specification:
+
+  * $X_t = \Lambda F_t + e_t$
+  * $F_t = \Phi_1 F_{t-1} + \ldots + \Phi_p F_{t-p} + v_t$
+  * $y_t = B(L) y_{t-1} + C(L) F_{t-1} + u_t$
+
+where $X_t = [y_t, y_{t-1}, \ldots, y_{t-n}]$ is the information set constructed from current and lagged values of the target variable.
+
+We use lagged factors $F_{t-1}$ (not contemporaneous $F_t$) in the augmented VAR to avoid data leakage, since $F_t$ is extracted from $X_t$ which contains $y_t$.
+
+State-space form (companion representation):
+  
+  * Observation: $X_t = [\Lambda, 0, \ldots, 0] \cdot \chi_t + e_t$
+  * Transition:  $\chi_t = A \cdot \chi_{t-1} + \eta_t$
+  
+where:
+  - $\chi_t = [F_t', F_{t-1}', \ldots, F_{t-p+1}']'$ is the state vector and $A$ is the companion matrix for the factor VAR
+  - $X_t$ is $N \times 1$ (information set: current and lagged $y$)
+  - $F_t$ is $r \times 1$ (latent factors extracted from $X_t$, with $r < N$)
+  - $y_t$ is $K \times 1$ (target variable of interest, $K=1$ for univariate)
+  - $\Lambda$ is $N \times r$ (factor loadings)
+  - $B(L) = B_1 L + \ldots + B_{p_y} L^{p_y}$ (lag polynomial for $y$ dynamics)
+  - $\Phi(L) = \Phi_1 L + \ldots + \Phi_{p_f} L^{p_f}$ (lag polynomial for factor dynamics)
+  - $C(L) = C_1 L + \ldots + C_{p_f} L^{p_f}$ (lag polynomial for factor impact on $y$)
+
+Estimation: PCA for factor extraction, OLS for VARs
+
+### Dynamic Factor Model (DFM)
+
+Model specification (state-space form):
+
+  * Observation equation:  $X_t = \Lambda \cdot F_t + u_t$,  $u_t \sim N(0, R)$
+  * State equation:        $F_t = A \cdot F_{t-1} + \eta_t$, $\eta_t \sim N(0, Q)$
+
+For VAR(p) factor dynamics, use companion form:
+
+  * Observation:  $X_t = [\Lambda, 0, \ldots, 0] \cdot \chi_t + u_t$
+  * Transition:   $\chi_t = A \cdot \chi_{t-1} + \eta_t$
+
+where:
+  - $\chi_t = [F_t', F_{t-1}', \ldots, F_{t-p+1}']'$ is the state vector ($rp \times 1$) and $A$ is the companion matrix ($rp \times rp$)
+  - $X_t$ is $N \times 1$ (observed variables, standardized to mean 0, common variance)
+  - $F_t$ is $r \times 1$ (latent factors, $r < N$)
+  - $\Lambda$ is $N \times r$ (factor loadings)
+  - $A$ is $r \times r$ (transition matrix for VAR(1)) or $rp \times rp$ (companion form for VAR(p))
+  - $R$ is $N \times N$ (idiosyncratic covariance, diagonal)
+  - $Q$ is $r \times r$ (factor innovation covariance) or $rp \times rp$ (companion form)
+
+Estimation: EM algorithm with Kalman filter for state estimation
 
 ## Forecast Comparison Metrics
 
@@ -163,8 +298,14 @@ cpifood <- download_data("CPIUFDSL")
 gdpdef <- download_data("GDPDEF")
 ```
 
+Get the quarterly real GDP data to compute growth rates:
+
+```{r data3, warning = FALSE, message = FALSE, echo = TRUE}
+gdpc1 <- download_data("GDPC1")
+```
+
 We also require the 'University of Michigan\footnote{GO BLUE!}: Inflation Expectation (Median
-expected price change next 12 months)' as a covariate:
+expected price change next 12 months)' as a covariate for DFM:
 
 ```{r data4, warning = FALSE, message = FALSE, echo = TRUE}
 # University of Michigan: Inflation Expectation (Median expected price change next 12 months)
@@ -181,7 +322,7 @@ $$
 
 We will use October data to compute the inflation rate to match the reported quarterly GDP data.
 
-```{r plots1, fig.width=6, fig.height=4, warning = FALSE, message = FALSE, echo = TRUE}
+```{r inflation, fig.width=6, fig.height=4, warning = FALSE, message = FALSE, echo = TRUE}
 inflation_mm <- function(data, col) {
     data %>%
         as_tibble() %>%
@@ -194,7 +335,9 @@ inflation_mm <- function(data, col) {
 
         mutate(year = year(date), month = month(date)) %>%
         filter(month == 10) %>%
-        mutate(inflation = 100 * (!!sym(col) - lead(!!sym(col))) / lead(!!sym(col)))
+        mutate(
+            inflation = 100 * (!!sym(col) - lead(!!sym(col))) / lead(!!sym(col))
+        )
 }
 
 cpiaucsl_mm <- inflation_mm(cpiaucsl, "CPIAUCSL")
@@ -204,9 +347,27 @@ cpifood_mm <- inflation_mm(cpifood, "CPIUFDSL")
 gdpdef_mm <- inflation_mm(gdpdef, "GDPDEF")
 ```
 
-UM data has a different format (it is already in percentage base 100):
+The GDP data has a different frequency (quarterly) so we need to adjust the code:
 
-```{r michigan1, warning = FALSE, message = FALSE, echo = TRUE}
+```{r gdp, warning = FALSE, message = FALSE, echo = TRUE}
+gdpc1_yy <- gdpc1 %>%
+    arrange(desc(date)) %>%
+    group_by(date) %>%
+    filter(realtime_period == max(realtime_period)) %>%
+    ungroup() %>%
+    mutate(year = year(date)) %>%
+    filter(year < 2025) %>%
+    group_by(year) %>%
+    summarise(gdp = sum(GDPC1), .groups = "drop") %>%
+    mutate(
+        date = ymd(paste0(year, "-10-01")),
+        gdpgrowth = 100 * (gdp - lag(gdp)) / lag(gdp)
+    )
+```
+
+UM data has a different format (it is already in percentage base 100 and lagged 1 year):
+
+```{r michigan, warning = FALSE, message = FALSE, echo = TRUE}
 michigan_mm <- michigan %>%
     arrange(desc(date)) %>%
     group_by(date) %>%
@@ -220,19 +381,20 @@ michigan_mm <- michigan %>%
 
 Merge all into one data frame for plotting:
 
-```{r plots2, fig.width=6, fig.height=4, warning = FALSE, message = FALSE, echo = TRUE}
-merge_inflation <- function(data, name) {
-    data %>%
-        select(date, !!sym(col)) %>%
-        mutate(series = name)
-}
-
+```{r plots, fig.width=6, fig.height=4, warning = FALSE, message = FALSE, echo = TRUE}
 inflation <- map2_df(
-    list(cpiaucsl_mm, cpilfesl_mm, cpiengsl_mm, cpifood_mm, gdpdef_mm, michigan_mm),
-    c("I-CPIAUCSL", "I-CPILFESL", "I-CPIENGSL", "I-CPIUFDSL", "I-GDPDEF", "I-MICH"),
+    list(
+        cpiaucsl_mm,
+        cpilfesl_mm,
+        cpiengsl_mm,
+        cpifood_mm,
+        gdpdef_mm,
+        michigan_mm
+    ),
+    c("CPIAUCSL", "CPILFESL", "CPIENGSL", "CPIUFDSL", "GDPDEF", "MICH"),
     function(x, y) {
         x %>%
-            select(date, inflation) %>%
+            select(date, value = inflation) %>%
             mutate(series = y)
     }
 )
@@ -240,29 +402,44 @@ inflation <- map2_df(
 
 Plot of the different inflation measures:
 
-```{r plots3, fig.width=6, fig.height=4, warning = FALSE, message = FALSE, echo = TRUE}
-ggplot(inflation, aes(x = date, y = inflation, color = series)) +
+```{r plots2, fig.width=6, fig.height=4, warning = FALSE, message = FALSE, echo = TRUE}
+ggplot(inflation, aes(x = date, y = value, color = series)) +
     geom_line() +
     labs(
         title = "Inflation Measures",
-        x = "Date",
-        y = "Inflation Rate (%)",
+        x = "Year",
+        y = "Inflation rate (%)",
         color = "Series"
     ) +
     scale_colour_tintin_d() +
-    facet_wrap(~ series, ncol = 3) +
+    facet_wrap(~series, ncol = 3) +
     theme_minimal(base_size = 10) +
-    theme(legend.position = "top")
+    theme(legend.position = "top") +
+    geom_hline(yintercept = 0, color = "red", linetype = "dashed")
+
+ggplot(gdpc1_yy, aes(x = date, y = gdpgrowth)) +
+    geom_line() +
+    labs(
+        title = "Real GDP Change",
+        x = "Year",
+        y = "Growth rate (%)",
+        color = "Series"
+    ) +
+    theme_minimal(base_size = 10) +
+    theme(legend.position = "top") +
+    geom_hline(yintercept = 0, color = "red", linetype = "dashed")
 ```
 
-The plots show some level of similarity between all series except for the CPIENGSL (energy prices) which is more
+The plots show some level of similarity between all series except for CPIENGSL (energy prices) which is more
 volatile. The series without food and energy (CPILFESL) is more stable and is similar to the GDP deflator (GDPDEF) while
-the other series have more volatility.
+the other series have more volatility. The Michigan survey (MICH) shows a proper forward-looking measure of inflation
+expectations.
 
 Because energy depends on external factors (e.g., geopolitical events that affect oil prices) and food prices are
 affected by seasonal patterns, we will use the CPILFESL and GDP deflator as our main inflation measure.
 
-UM survey reflects a relatively accurate forward-looking measure of inflation expectations.
+GDP is also affected by external factors (e.g., the $X - M$ component of GDP) but we do not have another measure of
+GDP growth.
 
 # Estimate a VAR model
 
@@ -280,18 +457,18 @@ $$
 ```{r var1, eval = run_models, warning = FALSE, message = FALSE, echo = TRUE}
 # compute AIC for AR model objects of class 'dynlm'
 AIC <- function(model) {
-  
-  ssr <- sum(model$residuals^2)
-  t <- length(model$residuals)
-  npar <- length(model$coef)
-  
-  return(
-    round(c("AIC" = log(ssr/t) + npar * 2/t), 4)
-  )
+    ssr <- sum(model$residuals^2)
+    t <- length(model$residuals)
+    npar <- length(model$coef)
+
+    return(
+        round(c("AIC" = log(ssr / t) + npar * 2 / t), 4)
+    )
 }
 
 # intercept only AR model
 AIC(dynlm(ts(cpilfesl_mm$inflation) ~ 1))
+AIC(dynlm(ts(gdpc1_yy$gdpgrowth) ~ 1))
 ```
 
 Looping over different model orders:
@@ -300,25 +477,17 @@ Looping over different model orders:
 # loop AIC over models of different orders
 order <- 1:10
 
-AICs <- vapply(
+inflation_AICs <- vapply(
     order,
     function(x) {
-        AIC(dynlm(ts(cpilfesl_mm$inflation) ~ L(ts(cpilfesl_mm$inflation), 1:x)))
+        AIC(dynlm(
+            ts(cpilfesl_mm$inflation) ~ L(ts(cpilfesl_mm$inflation), 1:x)
+        ))
     },
     FUN.VALUE = numeric(1)
 )
 
-which.min(AICs)
-```
-
-Based on the AIC criterion, we select a lag length of 4 for CPILFESL.
-
-Similarly, for GDPDEF:
-
-```{r var3, eval = run_models, warning = FALSE, message = FALSE, echo = TRUE}
-# loop AIC over models of different orders
-
-AICs_gdpdef <- vapply(
+gdpdef_AICs <- vapply(
     order,
     function(x) {
         AIC(dynlm(ts(gdpdef_mm$inflation) ~ L(ts(gdpdef_mm$inflation), 1:x)))
@@ -326,10 +495,36 @@ AICs_gdpdef <- vapply(
     FUN.VALUE = numeric(1)
 )
 
-which.min(AICs_gdpdef)
+gdpgrowth_AICs <- vapply(
+    order,
+    function(x) {
+        AIC(dynlm(ts(gdpc1_yy$gdpgrowth) ~ L(ts(gdpc1_yy$gdpgrowth), 1:x)))
+    },
+    FUN.VALUE = numeric(1)
+)
+
+saveRDS(inflation_AICs, "data/aics_cpilfesl.rds")
+saveRDS(gdpdef_AICs, "data/aics_gdpdef.rds")
+saveRDS(gdpgrowth_AICs, "data/aics_gdpgrowth.rds")
 ```
 
-Based on the AIC criterion, we select a lag length of 6 for GDPDEF.
+```{r var2b, warning = FALSE, message = FALSE, echo = TRUE}
+if (!run_models) {
+    inflation_AICs <- readRDS("data/aics_cpilfesl.rds")
+    gdpdef_AICs <- readRDS("data/aics_gdpdef.rds")
+    gdpgrowth_AICs <- readRDS("data/aics_gdpgrowth.rds")
+}
+
+which.min(inflation_AICs)
+which.min(gdpdef_AICs)
+which.min(gdpgrowth_AICs)
+```
+
+Based on the AIC criterion, we select a lag length of:
+
+* 4 for CPILFESL
+* 6 for GDPDEF
+* 4 for GDP growth
 
 Now we can estimate the VAR model using `var_model()` from the `ecod025ps1` package:
 
@@ -338,153 +533,147 @@ Now we can estimate the VAR model using `var_model()` from the `ecod025ps1` pack
 h <- 12L
 l1 <- 4L
 l2 <- 6L
+l3 <- 4L
 ```
 
-```{r var4b, eval = run_models, warning = FALSE, message = FALSE, echo = TRUE}
-fit_cpilfesl <- var_model(na.omit(as.matrix(cpilfesl_mm$inflation)), p = l1,
-    include_const = TRUE, forecast_h = h)
+The interesting excercise is to evaluate the forecasts from the VAR model by subsetting the data "T" years before the
+end date and compare the predictions with the actual values. One problem in this time horizon is that we have the
+COVID-19 pandemic (2020) external shock.
 
-fit_gdpdef <- var_model(na.omit(as.matrix(gdpdef_mm$inflation)), p = l2,
-    include_const = TRUE, forecast_h = h)
+In other words, we will consider both in and out of sample model metrics. Because of the GDP data, we need to trim
+the series before 2025.
 
-saveRDS(fit_cpilfesl, "data/fit_cpilfesl.rds")
-saveRDS(fit_gdpdef, "data/fit_gdpdef.rds")
-```
+```{r var5, warning = FALSE, message = FALSE, echo = TRUE}
+common_years <- cpilfesl_mm %>%
+    select(date) %>%
+    inner_join(select(gdpdef_mm, date), by = "date") %>%
+    inner_join(select(gdpc1_yy, date), by = "date")
 
-We can plot the forecasts for $T=1,\ldots, 12$
-
-```{r var5, fig.width=6, fig.height=4, warning = FALSE, message = FALSE, echo = TRUE}
-if (!run_models) {
-    fit_cpilfesl <- readRDS("data/fit_cpilfesl.rds")
-    fit_gdpdef <- readRDS("data/fit_gdpdef.rds")
-}
-
-fit_predictions <- tibble(
-    horizon = paste0("CPILFESL-", fit_cpilfesl$forecast_h),
-    predicted_inflation = as.numeric(fit_cpilfesl$forecasts),
-    date = max(cpilfesl_mm$date) + years(seq_len(fit_cpilfesl$forecast_h))
-) %>%
-    bind_rows(
-        tibble(
-            horizon = paste0("GDPDEF-", fit_gdpdef$forecast_h),
-            predicted_inflation = as.numeric(fit_gdpdef$forecasts),
-            date = max(gdpdef_mm$date) + years(seq_len(fit_gdpdef$forecast_h))
-        )
-    )
-
-ggplot(fit_predictions, aes(x = date, y = predicted_inflation, color = horizon)) +
-    geom_line() +
-    geom_point(size = 1.5) +
-    labs(
-        title = "Future VAR Forecasts for CPILFESL",
-        x = "Date",
-        y = "Predicted Inflation Rate (%)",
-        color = "Series"
-    ) +
-    scale_colour_tintin_d() +
-    facet_wrap(~horizon, ncol = 3) +
-    theme_minimal(base_size = 10) +
-    theme(legend.position = "top")
-```
-
-The interesting part is to compare the forecasts from the VAR model by subsetting the data "T" years before the end
-date and compare the predictions with the actual values. One problem in this time horizon is that we have the
-COVID-19 pandemic (2020)
-external shock.
-
-```{r var6, warning = FALSE, message = FALSE, echo = TRUE}
 # subset data
 cpilfesl_mm_subset <- cpilfesl_mm %>%
+    inner_join(common_years, by = "date") %>%
     filter(date <= (max(date) - years(h)))
 
 gdpdef_mm_subset <- gdpdef_mm %>%
+    inner_join(common_years, by = "date") %>%
+    filter(date <= (max(date) - years(h)))
+
+gdpc1_yy_subset <- gdpc1_yy %>%
+    inner_join(common_years, by = "date") %>%
     filter(date <= (max(date) - years(h)))
 ```
 
-```{r var6b, eval = run_models, warning = FALSE, message = FALSE, echo = TRUE}
-# re-estimate the VAR model
-fit_cpilfesl_subset <- var_model(na.omit(as.matrix(cpilfesl_mm_subset$inflation)),
-    p = l1, include_const = TRUE, forecast_h = h)
+```{r var5b, eval = run_models, warning = FALSE, message = FALSE, echo = TRUE}
+fit_cpilfesl_subset <- var_model(
+    na.omit(as.matrix(cpilfesl_mm_subset$inflation)),
+    p = l1,
+    include_const = TRUE,
+    forecast_h = h
+)
 
-fit_gdpdef_subset <- var_model(na.omit(as.matrix(gdpdef_mm_subset$inflation)),
-    p = l2, include_const = TRUE, forecast_h = h)
+fit_gdpdef_subset <- var_model(
+    na.omit(as.matrix(gdpdef_mm_subset$inflation)),
+    p = l2,
+    include_const = TRUE,
+    forecast_h = h
+)
+
+fit_gdpgrowth_subset <- var_model(
+    na.omit(as.matrix(gdpc1_yy_subset$gdpgrowth)),
+    p = l3,
+    include_const = TRUE,
+    forecast_h = h
+)
 
 saveRDS(fit_cpilfesl_subset, "data/fit_cpilfesl_subset.rds")
 saveRDS(fit_gdpdef_subset, "data/fit_gdpdef_subset.rds")
+saveRDS(fit_gdpgrowth_subset, "data/fit_gdpgrowth_subset.rds")
 ```
 
-```{r var6c, fig.width=6, fig.height=4, warning = FALSE, message = FALSE, echo = TRUE}
+```{r var5c, fig.width=6, fig.height=4, warning = FALSE, message = FALSE, echo = TRUE}
 if (!run_models) {
     fit_cpilfesl_subset <- readRDS("data/fit_cpilfesl_subset.rds")
     fit_gdpdef_subset <- readRDS("data/fit_gdpdef_subset.rds")
+    fit_gdpgrowth_subset <- readRDS("data/fit_gdpgrowth_subset.rds")
 }
 
-inflation2 <- inflation %>%
-    filter(series %in% c("I-CPILFESL", "I-GDPDEF")) %>%
-    filter(year(date) > max(year(date) - h))
-
 fit_predictions2 <- tibble(
-        date = max(cpilfesl_mm_subset$date) + years(seq_len(fit_cpilfesl_subset$forecast_h)),
-        inflation = as.numeric(fit_cpilfesl_subset$forecasts),
-        series = "I-CPILFESL"
+    date = max(cpilfesl_mm_subset$date) +
+        years(seq_len(fit_cpilfesl_subset$forecast_h)),
+    prediction = as.numeric(fit_cpilfesl_subset$forecasts),
+    series = "CPILFESL"
+) %>%
+    bind_rows(
+        tibble(
+            date = max(gdpdef_mm_subset$date) +
+                years(seq_len(fit_gdpdef_subset$forecast_h)),
+            prediction = as.numeric(fit_gdpdef_subset$forecasts),
+            series = "GDPDEF"
+        )
     ) %>%
     bind_rows(
         tibble(
-            date = max(gdpdef_mm_subset$date) + years(seq_len(fit_gdpdef_subset$forecast_h)),
-            inflation = as.numeric(fit_gdpdef_subset$forecasts),
-            series = "I-GDPDEF"
+            date = max(gdpc1_yy_subset$date) +
+                years(seq_len(fit_gdpgrowth_subset$forecast_h)),
+            prediction = as.numeric(fit_gdpgrowth_subset$forecasts),
+            series = "GDPGROWTH"
         )
     )
 
 fit_predictions2 <- fit_predictions2 %>%
-    left_join(inflation2, by = c("date", "series")) %>%
-    rename(
-        inflation = inflation.y,
-        prediction = inflation.x
+    left_join(
+        inflation %>%
+            filter(series %in% c("CPILFESL", "GDPDEF")) %>%
+            filter(year(date) > max(year(date) - h)) %>%
+            rename(observed = value) %>%
+            bind_rows(
+                gdpc1_yy %>%
+                    filter(year(date) > max(year(date) - h)) %>%
+                    select(date, observed = gdpgrowth) %>%
+                    mutate(series = "GDPGROWTH")
+            ),
+        by = c("date", "series")
     )
 
-ggplot(inflation2) +
-    geom_line(data = fit_predictions2, aes(x = date, y = inflation, color = series),
-        linewidth = 1.5) +
-    geom_point(data = fit_predictions2, aes(x = date, y = inflation, color = series),
-        size = 3) +
-    
-    geom_line(data = fit_predictions2, aes(x = date, y = prediction, color = series),
-        linewidth = 1, color = "gray70") +
-    geom_point(data = fit_predictions2, aes(x = date, y = prediction, color = series),
-        size = 2, color = "gray70") +
+ggplot(fit_predictions2) +
+    geom_line(aes(x = date, y = observed, color = series), linewidth = 1.5) +
+    geom_point(aes(x = date, y = observed, color = series), size = 3) +
 
-    geom_segment(data = fit_predictions2,
-        aes(x = date, xend = date, y = inflation, yend = prediction),
+    geom_line(
+        aes(x = date, y = prediction, color = series),
+        linewidth = 1,
+        color = "gray70"
+    ) +
+    geom_point(
+        data = fit_predictions2,
+        aes(x = date, y = prediction, color = series),
+        size = 2,
+        color = "gray70"
+    ) +
+
+    geom_segment(
+        data = fit_predictions2,
+        aes(x = date, xend = date, y = observed, yend = prediction),
         linetype = "dashed",
         color = "gray50"
     ) +
 
     labs(
-        title = "Inflation Measures and Past VAR Predictions",
+        title = "Observed Past Magnitudes vs VAR Predictions",
         subtitle = "Predictions in gray",
         x = "Date",
-        y = "Inflation Rate (%)",
+        y = "Change Rate (%)",
         color = "Series"
     ) +
     scale_colour_tintin_d() +
-    facet_wrap(~ series, ncol = 3) +
+    facet_wrap(~series, ncol = 3) +
     theme_minimal(base_size = 10) +
-    theme(legend.position = "top")
+    theme(legend.position = "top") +
+    geom_hline(yintercept = 0, color = "red", linetype = "dashed")
 ```
 
-The RMSFE and MAE metrics are the following:
-
-```{r var7, warning = FALSE, message = FALSE, echo = TRUE}
-# CPILFESL model
-c("RMFSE" = fit_cpilfesl$rmsfe, "MAE" = fit_cpilfesl$mae)
-
-# GDPDEF model
-c("RMFSE" = fit_gdpdef$rmsfe, "MAE" = fit_gdpdef$mae)
-```
-
-We can compute a side RMSFE and MAE in a counterfactual way by using the last observed values and the forecast for the
-next 12 months (we need an R-side RMSFE and MAE functions as their C++ counterparts are not exported):
+For the out-of-sample RMSFE and MAE metrics we need an R-side RMSFE and MAE functions as their C++
+counterparts are not exported):
 
 ```{r var8, warning = FALSE, message = FALSE, echo = TRUE}
 RMSFE <- function(actual, predicted) {
@@ -496,261 +685,386 @@ MAE <- function(actual, predicted) {
 }
 
 fit_predictions2 %>%
-    filter(series == "I-CPILFESL") %>%
-    mutate(model = "CPILFESL") %>%
-    group_by(model) %>%
+    filter(series %in% c("CPILFESL", "GDPDEF", "GDPGROWTH")) %>%
+    group_by(series) %>%
     summarise(
-        RMSFE = RMSFE(inflation, prediction),
-        MAE = MAE(inflation, prediction)
-    )
-
-fit_predictions2 %>%
-    filter(series == "I-GDPDEF") %>%
-    mutate(model = "GDPDEF") %>%
-    group_by(model) %>%
-    summarise(
-        RMSFE = RMSFE(inflation, prediction),
-        MAE = MAE(inflation, prediction)
+        RMSFE_out_of_sample = RMSFE(observed, prediction),
+        MAE_out_of_sample = MAE(observed, prediction)
+    ) %>%
+    ungroup() %>%
+    mutate(
+        RMSFE_in_sample = c(
+            fit_gdpgrowth_subset$rmsfe,
+            fit_gdpdef_subset$rmsfe,
+            fit_gdpgrowth_subset$rmsfe
+        ),
+        MAE_in_sample = c(
+            fit_gdpgrowth_subset$mae,
+            fit_gdpdef_subset$mae,
+            fit_gdpgrowth_subset$mae
+        )
+    ) %>%
+    select(
+        series,
+        RMSFE_in_sample,
+        RMSFE_out_of_sample,
+        MAE_in_sample,
+        MAE_out_of_sample
     )
 ```
 
-For the GDPDEF model, the MAE reveals hat this model does not predict accurately out of sample.
-
 # Estimate a FA-VAR model
 
-We will use the `favar_model()` from the `ecod025ps1` package to estimate a FA-VAR model.
+The FA-VAR model follows a pure time series approach: it creates an information set $X_t$ from the target variable
+and its lags, extracts latent factors via PCA, and augments a VAR with these factors.
 
-The data is the same as before but we require an extra variable $X_t$. To use a covariate, we will use the
-University of Michigan inflation expectation (MICH) as it is
-a forward-looking variable. The justification for this choice is that the Fed mandate is to keep the expectation of
-inflation low and stable. This is the general rule for central banks, which do not directly control inflation.
+Model specification:
+- $X_t = [y_t, y_{t-1}, \ldots, y_{t-L}]$ (information set created from y and its lags)
+- Extract $r$ factors from $X_t$ using PCA
+- Estimate: $y_t = B(L) y_{t-1} + C(L) F_t + u_t$ (augmented VAR with factor lags)
 
-Furthermore, we can use the expected inflation and its 2,3-year lag as predictors (the variable is already lagged).
+This approach captures nonlinear patterns in the autocorrelation structure through factor extraction.
 
 ```{r favar1, eval = run_models, warning = FALSE, message = FALSE, echo = TRUE}
-yx <- michigan_mm %>%
-    select(date, mich = inflation) %>%
-    mutate(
-        mich_lag1 = lead(mich, 1),
-        mich_lag2 = lead(mich, 2)
-        # mich_lag3 = lead(mich, 3)
-    ) %>%
-    inner_join(
-        cpilfesl_mm_subset %>%
-            select(date, cpilfesl = inflation),
-        by = "date"
-    ) %>%
-    inner_join(
-        gdpdef_mm_subset %>%
-            select(date, gdpdef = inflation),
-        by = "date"
-    ) %>%
-    select(-date) %>%
-    as.matrix() %>%
-    na.omit()
+# FA-VAR parameters (simplified to avoid overfitting)
+n_lags <- 3L # Number of lags to create information set X (creates 4 variables)
+n_factors <- 2L # Number of factors to extract from X
+p_f <- 2L # Factor lags
 
-l_order <- which(colnames(yx) == "mich_lag2")
+y <- na.omit(as.matrix(cpilfesl_mm_subset$inflation))
 
-# Use p_f = 0: only contemporaneous factors (no factor dynamics)
-# This estimates: y_t = B(L)y_{t-1} + CF_t + u_t
-fit_cpilfesl_favar <- favar_model(yx[, "cpilfesl"], yx[, 1:l_order], 
-    n_factors = 1L, p_y = l1, p_f = 0L,
-    include_const = TRUE, forecast_h = h)
+# Estimate FA-VAR models
+fit_cpilfesl_favar <- favar_model(
+    y = y,
+    n_lags = n_lags,
+    n_factors = n_factors,
+    p_y = l1,
+    p_f = p_f,
+    include_const = TRUE,
+    forecast_h = h
+)
 
-fit_gdpdef_favar <- favar_model(yx[, "gdpdef"], yx[, 1:l_order], 
-    n_factors = 1L, p_y = l2, p_f = 0L,
-    include_const = TRUE, forecast_h = h)
+# Tuned parameters for GDPDEF
+n_lags <- 3L
+n_factors <- 2L
+p_f <- 1L
+
+y <- na.omit(as.matrix(gdpdef_mm_subset$inflation))
+
+fit_gdpdef_favar <- favar_model(
+    y = y,
+    n_lags = n_lags,
+    n_factors = n_factors,
+    p_y = l2,
+    p_f = p_f,
+    include_const = TRUE,
+    forecast_h = h
+)
+
+# Tuned parameters for GDP growth
+n_lags <- 3L
+n_factors <- 2L
+p_f <- 1L
+
+y <- na.omit(as.matrix(gdpc1_yy_subset$gdpgrowth))
+
+fit_gdpc1_favar <- favar_model(
+    y = y,
+    n_lags = n_lags,
+    n_factors = n_factors,
+    p_y = l3,
+    p_f = p_f,
+    include_const = TRUE,
+    forecast_h = h
+)
 
 saveRDS(fit_cpilfesl_favar, "data/fit_cpilfesl_favar.rds")
 saveRDS(fit_gdpdef_favar, "data/fit_gdpdef_favar.rds")
+saveRDS(fit_gdpc1_favar, "data/fit_gdpc1_favar.rds")
 ```
 
 ```{r favar2, warning = FALSE, message = FALSE, echo = TRUE}
 if (!run_models) {
     fit_cpilfesl_favar <- readRDS("data/fit_cpilfesl_favar.rds")
     fit_gdpdef_favar <- readRDS("data/fit_gdpdef_favar.rds")
+    fit_gdpc1_favar <- readRDS("data/fit_gdpc1_yy_favar.rds")
 }
 
 fit_predictions3 <- tibble(
-        date = max(cpilfesl_mm_subset$date) + years(seq_len(fit_cpilfesl_favar$forecast_h)),
-        inflation = as.numeric(fit_cpilfesl_favar$forecasts),
-        series = "I-CPILFESL"
+    date = max(cpilfesl_mm_subset$date) +
+        years(seq_len(fit_cpilfesl_favar$forecast_horizon)),
+    prediction = as.numeric(fit_cpilfesl_favar$forecasts),
+    series = "CPILFESL"
+) %>%
+    bind_rows(
+        tibble(
+            date = max(gdpdef_mm_subset$date) +
+                years(seq_len(fit_gdpdef_favar$forecast_horizon)),
+            prediction = as.numeric(fit_gdpdef_favar$forecasts),
+            series = "GDPDEF"
+        )
     ) %>%
     bind_rows(
         tibble(
-            date = max(gdpdef_mm_subset$date) + years(seq_len(fit_gdpdef_favar$forecast_h)),
-            inflation = as.numeric(fit_gdpdef_favar$forecasts),
-            series = "I-GDPDEF"
+            date = max(gdpc1_yy_subset$date) +
+                years(seq_len(fit_gdpc1_favar$forecast_horizon)),
+            prediction = as.numeric(fit_gdpc1_favar$forecasts),
+            series = "GDPGROWTH"
         )
     )
 
 fit_predictions3 <- fit_predictions3 %>%
-    left_join(inflation2, by = c("date", "series")) %>%
-    rename(
-        inflation = inflation.y,
-        prediction = inflation.x
-    )
-
-# RMSFE and MAE
-
-fit_predictions3 %>%
-    filter(series == "I-CPILFESL") %>%
-    mutate(model = "CPILFESL") %>%
-    group_by(model) %>%
-    summarise(
-        RMSFE = RMSFE(inflation, prediction),
-        MAE = MAE(inflation, prediction)
-    ) %>%
-    mutate(
-        AIC = fit_cpilfesl_favar$aic
+    left_join(
+        inflation %>%
+            filter(series %in% c("CPILFESL", "GDPDEF")) %>%
+            filter(year(date) > max(year(date) - h)) %>%
+            select(date, observed = value, series) %>%
+            bind_rows(
+                gdpc1_yy %>%
+                    filter(year(date) > max(year(date) - h)) %>%
+                    select(date, observed = gdpgrowth) %>%
+                    mutate(series = "GDPGROWTH")
+            ),
+        by = c("date", "series")
     )
 
 fit_predictions3 %>%
-    filter(series == "I-GDPDEF") %>%
-    mutate(model = "GDPDEF") %>%
-    group_by(model) %>%
+    filter(series %in% c("CPILFESL", "GDPDEF", "GDPGROWTH")) %>%
+    group_by(series) %>%
     summarise(
-        RMSFE = RMSFE(inflation, prediction),
-        MAE = MAE(inflation, prediction)
+        RMSFE_out_of_sample = RMSFE(observed, prediction),
+        MAE_out_of_sample = MAE(observed, prediction)
     ) %>%
+    ungroup() %>%
     mutate(
-        AIC = fit_gdpdef_favar$aic
+        RMSFE_in_sample = c(
+            fit_cpilfesl_favar$rmsfe,
+            fit_gdpdef_favar$rmsfe,
+            fit_gdpc1_favar$rmsfe
+        ),
+        MAE_in_sample = c(
+            fit_cpilfesl_favar$mae,
+            fit_gdpdef_favar$mae,
+            fit_gdpc1_favar$mae
+        )
+    ) %>%
+    select(
+        series,
+        RMSFE_in_sample,
+        RMSFE_out_of_sample,
+        MAE_in_sample,
+        MAE_out_of_sample
     )
 ```
 
-The model does not improve the forecasts evaluation metrics compared to the VAR model.
-
-Now we can plot the forecast on the censored data:
+Plot the FA-VAR forecasts on the censored data:
 
 ```{r favar3, fig.width=6, fig.height=4, warning = FALSE, message = FALSE, echo = TRUE}
-ggplot() +
-    geom_line(data = fit_predictions3, aes(x = date, y = inflation, color = series),
-        linewidth = 1.5) +
-    geom_point(data = fit_predictions3, aes(x = date, y = inflation, color = series),
-        size = 3) +
-    
-    geom_line(data = fit_predictions3, aes(x = date, y = prediction, color = series),
-        linewidth = 1, color = "gray70") +
-    geom_point(data = fit_predictions3, aes(x = date, y = prediction, color = series),
-        size = 2, color = "gray70") +
+ggplot(fit_predictions3) +
+    geom_line(aes(x = date, y = observed, color = series), linewidth = 1.5) +
+    geom_point(aes(x = date, y = observed, color = series), size = 3) +
 
-    geom_segment(data = fit_predictions3,
-        aes(x = date, xend = date, y = inflation, yend = prediction),
+    geom_line(
+        aes(x = date, y = prediction, color = series),
+        linewidth = 1,
+        color = "gray70"
+    ) +
+    geom_point(
+        aes(x = date, y = prediction, color = series),
+        size = 2,
+        color = "gray70"
+    ) +
+
+    geom_segment(
+        aes(x = date, xend = date, y = observed, yend = prediction),
         linetype = "dashed",
         color = "gray50"
     ) +
 
     labs(
-        title = "Inflation Measures and Past VAR Predictions",
+        title = "Observed Past Magnitudes vs FA-VAR Predictions",
         subtitle = "Predictions in gray",
         x = "Date",
-        y = "Inflation Rate (%)",
+        y = "Change Rate (%)",
         color = "Series"
     ) +
     scale_colour_tintin_d() +
-    facet_wrap(~ series, ncol = 3) +
+    facet_wrap(~series, ncol = 3) +
     theme_minimal(base_size = 10) +
     theme(legend.position = "top")
 ```
 
 # Estimate a DFM model
 
-The predictive DFM uses the same structure as FA-VAR but with DFM-based factor extraction:
+The DFM uses a state-space representation with PCA initialization and Kalman filter for parameter estimation.
 
-$$
-\begin{aligned}
-X_t &= [\text{MICH}_t, \text{MICH}_{t-1}, \text{MICH}_{t-2}] \cr
-F_t &= \text{Factors extracted from } X_t \cr
-y_t &= B(L)y_{t-1} + C(L) F_t + u_t
-\end{aligned}
-$$
+DFM is designed for multivariate data where we want to extract common factors across different economic variables.
+Unlike FA-VAR (which uses autoregressive lags), DFM works best with actual multivariate series that share common dynamics.
 
+We'll use two inflation measures $[CPILFESL/GDPDEF, CPIFOOD]$ to extract common factors.
 
 ```{r dfm1, eval = run_models, warning = FALSE, message = FALSE, echo = TRUE}
-# Predictive DFM: uses MICH + lags as covariates (like FA-VAR)
-# p_f = 0: only contemporaneous factors (no factor dynamics)
-l_order <- 3
+dfm_data_cpilfesl <- cpilfesl_mm_subset %>%
+    select(date, cpilfesl = inflation) %>%
+    inner_join(
+        cpifood_mm %>% select(date, cpifood = inflation),
+        by = "date"
+    ) %>%
+    na.omit()
 
-fit_cpilfesl_dfm <- dfm_predict_model(yx[, "cpilfesl"], yx[, 1:l_order], 
-    n_factors = 2L, p_y = l1, p_f = 0L,
-    include_const = TRUE, max_iter = 100L, tol = 1e-6, forecast_h = h)
+x_cpilfesl_dfm <- as.matrix(dfm_data_cpilfesl[, c("cpilfesl", "cpifood")])
 
-fit_gdpdef_dfm <- dfm_predict_model(yx[, "gdpdef"], yx[, 1:l_order], 
-    n_factors = 2, p_y = l2, p_f = 0L,
-    include_const = TRUE, max_iter = 100L, tol = 1e-6, forecast_h = h)
+# Estimate DFM (1 common inflation factor from 2 variables)
+fit_cpilfesl_dfm <- dfm_model(
+    x = x_cpilfesl_dfm,
+    n_factors = 1L,
+    p = 1L,
+    max_iter = 50L,
+    tol = 1e-6,
+    forecast_h = h
+)
+
+dfm_data_gdpdef <- gdpdef_mm_subset %>%
+    select(date, gdpdef = inflation) %>%
+    inner_join(
+        cpifood_mm %>% select(date, cpifood = inflation),
+        by = "date"
+    ) %>%
+    na.omit()
+
+x_gdpdef_dfm <- as.matrix(dfm_data_gdpdef[, c("gdpdef", "cpifood")])
+
+fit_gdpdef_dfm <- dfm_model(
+    x = x_gdpdef_dfm,
+    n_factors = 1L,
+    p = 1L,
+    max_iter = 50L,
+    tol = 1e-6,
+    forecast_h = h
+)
+
+dfm_data_gdpc1 <- gdpc1_yy_subset %>%
+    select(date, gdpgrowth = gdpgrowth) %>%
+    inner_join(
+        cpifood_mm %>% select(date, cpifood = inflation),
+        by = "date"
+    ) %>%
+    na.omit()
+
+x_gdpc1_dfm <- as.matrix(dfm_data_gdpc1[, c("gdpgrowth", "cpifood")])
+
+fit_gdpc1_dfm <- dfm_model(
+    x = x_gdpc1_dfm,
+    n_factors = 1L,
+    p = 2L,
+    max_iter = 50L,
+    tol = 1e-6,
+    forecast_h = h
+)
 
 saveRDS(fit_cpilfesl_dfm, "data/fit_cpilfesl_dfm.rds")
 saveRDS(fit_gdpdef_dfm, "data/fit_gdpdef_dfm.rds")
+saveRDS(fit_gdpc1_dfm, "data/fit_gdpc1_dfm.rds")
 ```
 
 ```{r dfm2, warning = FALSE, message = FALSE, echo = TRUE}
 if (!run_models) {
-    fit_cpilfesl_dfm <- readRDS("data/fit_cpilfesl_dfm.rds")
-    fit_gdpdef_dfm <- readRDS("data/fit_gdpdef_dfm.rds")
+  fit_cpilfesl_dfm <- readRDS("data/fit_cpilfesl_dfm.rds")
+  fit_gdpdef_dfm <- readRDS("data/fit_gdpdef_dfm.rds")
+  fit_gdpc1_dfm <- readRDS("data/fit_gdpc1_dfm.rds")
 }
 
+# Extract forecasts for the FIRST variable only (our target)
+# DFM forecasts all variables, but we only want the first one
 fit_predictions4 <- tibble(
-        date = max(cpilfesl_mm_subset$date) + years(seq_len(fit_cpilfesl_dfm$forecast_h)),
-        inflation = as.numeric(fit_cpilfesl_dfm$forecasts),  # Now a vector like FA-VAR
-        series = "I-CPILFESL"
+    date = max(dfm_data_cpilfesl$date) +
+        years(seq_len(fit_cpilfesl_dfm$forecast_horizon)),
+    prediction = as.numeric(fit_cpilfesl_dfm$forecasts[, 1]), # First column is CPILFESL
+    series = "CPILFESL"
+) %>%
+    bind_rows(
+        tibble(
+            date = max(dfm_data_gdpdef$date) +
+                years(seq_len(fit_gdpdef_dfm$forecast_horizon)),
+            prediction = as.numeric(fit_gdpdef_dfm$forecasts[, 1]), # First column is GDPDEF
+            series = "GDPDEF"
+        )
     ) %>%
     bind_rows(
         tibble(
-            date = max(gdpdef_mm_subset$date) + years(seq_len(fit_gdpdef_dfm$forecast_h)),
-            inflation = as.numeric(fit_gdpdef_dfm$forecasts),  # Now a vector like FA-VAR
-            series = "I-GDPDEF"
+            date = max(dfm_data_gdpc1$date) +
+                years(seq_len(fit_gdpc1_dfm$forecast_horizon)),
+            prediction = as.numeric(fit_gdpc1_dfm$forecasts[, 1]), # First column is GDP growth
+            series = "GDPGROWTH"
         )
     )
 
 fit_predictions4 <- fit_predictions4 %>%
-    left_join(inflation2, by = c("date", "series")) %>%
-    rename(
-        inflation = inflation.y,
-        prediction = inflation.x
+    left_join(
+        inflation %>%
+            filter(series %in% c("CPILFESL", "GDPDEF")) %>%
+            filter(year(date) > max(year(date) - h)) %>%
+            select(date, observed = value, series) %>%
+            bind_rows(
+                gdpc1_yy %>%
+                    filter(year(date) > max(year(date) - h)) %>%
+                    select(date, observed = gdpgrowth) %>%
+                    mutate(series = "GDPGROWTH")
+            ),
+        by = c("date", "series")
     )
 
 fit_predictions4 %>%
-    filter(series == "I-CPILFESL") %>%
-    mutate(model = "CPILFESL") %>%
-    group_by(model) %>%
+    filter(series %in% c("CPILFESL", "GDPDEF", "GDPGROWTH")) %>%
+    group_by(series) %>%
     summarise(
-        RMSFE = RMSFE(inflation, prediction),
-        MAE = MAE(inflation, prediction)
+        RMSFE_out_of_sample = RMSFE(observed, prediction),
+        MAE_out_of_sample = MAE(observed, prediction)
     ) %>%
+    ungroup() %>%
     mutate(
-        AIC = fit_cpilfesl_dfm$aic
-    )
-
-fit_predictions4 %>%
-    filter(series == "I-GDPDEF") %>%
-    mutate(model = "GDPDEF") %>%
-    group_by(model) %>%
-    summarise(
-        RMSFE = RMSFE(inflation, prediction),
-        MAE = MAE(inflation, prediction)
+        RMSFE_in_sample = c(fit_cpilfesl_dfm$rmsfe, fit_gdpdef_dfm$rmsfe, fit_gdpc1_dfm$rmsfe),
+        MAE_in_sample = c(fit_cpilfesl_dfm$mae, fit_gdpdef_dfm$mae, fit_gdpc1_dfm$mae)
     ) %>%
-    mutate(
-        AIC = fit_gdpdef_dfm$aic
+    select(
+        series,
+        RMSFE_in_sample,
+        RMSFE_out_of_sample,
+        MAE_in_sample,
+        MAE_out_of_sample
     )
 ```
 
 Now we can plot the forecast on the censored data:
 
 ```{r dfm3, fig.width=6, fig.height=4, warning = FALSE, message = FALSE, echo = TRUE}
-ggplot() +
-    geom_line(data = fit_predictions4, aes(x = date, y = inflation, color = series),
-        linewidth = 1.5) +
-    geom_point(data = fit_predictions4, aes(x = date, y = inflation, color = series),
-        size = 3) +
-    geom_line(data = fit_predictions4, aes(x = date, y = prediction, color = series),
-        linewidth = 1, color = "gray70") +
-    geom_point(data = fit_predictions4, aes(x = date, y = prediction, color = series),
-        size = 2, color = "gray70") +
-    geom_segment(data = fit_predictions4,
-        aes(x = date, xend = date, y = inflation, yend = prediction),
+ggplot(fit_predictions4) +
+    geom_line(
+        aes(x = date, y = observed, color = series),
+        linewidth = 1.5
+    ) +
+    geom_point(
+        aes(x = date, y = observed, color = series),
+        size = 3
+    ) +
+    geom_line(
+        aes(x = date, y = prediction, color = series),
+        linewidth = 1,
+        color = "gray70"
+    ) +
+    geom_point(
+        aes(x = date, y = prediction, color = series),
+        size = 2,
+        color = "gray70"
+    ) +
+
+    geom_segment(
+        data = fit_predictions4,
+        aes(x = date, xend = date, y = observed, yend = prediction),
         linetype = "dashed",
         color = "gray50"
     ) +
+
     labs(
         title = "Inflation Measures and Past DFM Predictions",
         subtitle = "Predictions in gray",
@@ -758,66 +1072,40 @@ ggplot() +
         y = "Inflation Rate (%)",
         color = "Series"
     ) +
+
     scale_colour_tintin_d() +
-    facet_wrap(~ series, ncol = 3) +
+    facet_wrap(~series, ncol = 3) +
     theme_minimal(base_size = 10) +
-    theme(legend.position = "top")
+    theme(legend.position = "top") +
+    geom_hline(yintercept = 0, color = "red", linetype = "dashed")
 ```
 
-This model does not improve the forecasts evaluation metrics compared to the VAR and FA-VAR models.
+# Model Comparison
 
-One valuable lesson from this excercise is that adding more factors does not necessarily improve the forecast
-evaluation metrics. With a similar RMSFE and MAE, the VAR model is preferred due to its simplicity according to the
-Occam's razor principle.
-
-# C++ code
+# C++ codes
 
 ## Model metrics
 
 ```cpp
-/*
-==============================================
-Root Mean Squared Forecast Error (RMSFE)
-===========================================
-*/
+/* Root Mean Squared Forecast Error (RMSFE) */
 
 double rmsfe(const Mat<double>& actual, const Mat<double>& forecast) {
-  // if (actual.n_rows != forecast.n_rows || actual.n_cols != forecast.n_cols) {
-  //   throw std::runtime_error("Actual and forecast matrices must have the same dimensions");
-  // }
-  
   Mat<double> errors = actual - forecast;
   Mat<double> squared_errors = square(errors);
-  Mat<double> mean_squared_errors = mean(squared_errors, 0); // Mean across rows for each variable
-  Mat<double> rmsfe_values = sqrt(mean_squared_errors);
   
-  // Return average RMSFE across all variables
-  return as_scalar(mean(rmsfe_values));
+  double mse = accu(squared_errors) / squared_errors.n_elem;
+  
+  return sqrt(mse);
 }
 
-/*
-==============================================
-Mean Absolute Error (MAE)
-==============================================
-*/
+/* Mean Absolute Error (MAE) */
 
-double mae(const Mat<double>& actual, const Mat<double>& forecast) {
-  // if (actual.n_rows != forecast.n_rows || actual.n_cols != forecast.n_cols) {
-  //   throw std::runtime_error("Actual and forecast matrices must have the same dimensions");
-  // }
-  
+double mae(const Mat<double>& actual, const Mat<double>& forecast) {  
   Mat<double> errors = abs(actual - forecast);
-  Mat<double> mean_absolute_errors = mean(errors, 0); // Mean across rows for each variable
-  
-  // Return average MAE across all variables
-  return as_scalar(mean(mean_absolute_errors));
+  return accu(errors) / errors.n_elem;
 }
 
-/*
-==============================================
-Akaike Information Criterion (AIC)
-==============================================
-*/
+/* Akaike Information Criterion (AIC) */
 
 double aic_metric(const Mat<double>& residuals, int n_params) {
   int T = residuals.n_rows;
@@ -833,14 +1121,10 @@ double aic_metric(const Mat<double>& residuals, int n_params) {
 }
 ```
 
-## VAR model
+## VAR
 
 ```cpp
-/*
-==============================================
-Vector Autoregressions (VAR)
-===========================================
-*/
+/* Vector Autoregressions (VAR) */
 
 // Create lagged matrix for VAR model
 Mat<double> create_lags_(const Mat<double>& Y, int p) {
@@ -995,6 +1279,11 @@ Mat<double> var_forecast_(const Mat<double>& Y, const Mat<double>& A,
 }
 /* roxygen
 @title Main VAR estimation function that returns everything
+@description Estimates a VAR model using OLS.
+@param y Time series vector (T x 1)
+@param p Lag order
+@param include_const Include constant term in VAR
+@param forecast_h Forecast horizon (0 for no forecast)
 @export
 */
 [[cpp4r::register]] list var_model(const doubles_matrix<>& y, int p, 
@@ -1026,48 +1315,40 @@ Mat<double> var_forecast_(const Mat<double>& Y, const Mat<double>& A,
   double aic = aic_metric(residuals, n_params);
   
   // Prepare results list
-  writable::list result(9);
+  writable::list result;
 
-  result[0] = as_doubles_matrix(A);
-  result[1] = as_doubles_matrix(Y_fitted);
-  result[2] = as_doubles_matrix(residuals);
-  result[3] = as_doubles_matrix(Sigma);
-  result[4] = as_doubles_matrix(F);
-  result[5] = cpp4r::as_sexp(p);
-  result[6] = cpp4r::as_sexp(K);
-  result[7] = cpp4r::as_sexp(T - p);  // Effective sample size
-  result[8] = cpp4r::as_sexp(include_const);
+  result.push_back({"coefficients"_nm = as_doubles_matrix(A)});
+  result.push_back({"fitted_values"_nm = as_doubles_matrix(Y_fitted)});
+  result.push_back({"residuals"_nm = as_doubles_matrix(residuals)});
+  result.push_back({"sigma"_nm = as_doubles_matrix(Sigma)});
+  result.push_back({"companion_matrix"_nm = as_doubles_matrix(F)});
 
-  result.names() = {"coefficients", "fitted_values", "residuals", "sigma", 
-                         "companion_matrix", "lag_order", "n_variables", 
-                         "n_obs", "include_const"};
+  result.push_back({"lag_order"_nm = cpp4r::as_sexp(p)});
+  result.push_back({"n_variables"_nm = cpp4r::as_sexp(K)});
+  result.push_back({"n_obs"_nm = cpp4r::as_sexp(T - p)});  // Effective sample size
+  result.push_back({"include_const"_nm = cpp4r::as_sexp(include_const)});
+  result.push_back({"rmsfe"_nm = cpp4r::as_sexp(rmsfe(Y.rows(p, T-1), Y_fitted))});
+  
+  result.push_back({"mae"_nm = cpp4r::as_sexp(mae(Y.rows(p, T-1), Y_fitted))});
+  result.push_back({"aic"_nm = cpp4r::as_sexp(aic)});
   
   // Add forecasts if requested
   if (forecast_h > 0) {
     Mat<double> forecasts = var_forecast_(Y, A, p, forecast_h, include_const);
     result.push_back({"forecasts"_nm = as_doubles_matrix(forecasts)});
     result.push_back({"forecast_horizon"_nm = cpp4r::as_sexp(forecast_h)});
-  }
-
-  // Add model metrics
-  result.push_back({"rmsfe"_nm = cpp4r::as_sexp(rmsfe(Y.rows(p, T-1), Y_fitted))});
-  result.push_back({"mae"_nm = cpp4r::as_sexp(mae(Y.rows(p, T-1), Y_fitted))});
-  result.push_back({"aic"_nm = cpp4r::as_sexp(aic)});
+  }  
   
   return result;
 }
 ```
 
-## FA-VAR model
+## FA-VAR
 
 ```cpp
-/*
-==============================================
-Factor-Augmented VAR (FA-VAR)
-==============================================
-*/
+// Factor-Augmented VAR (FA-VAR)
 
-// Extract factors using PCA from large dataset
+// Extract factors using PCA from time series data
 std::pair<Mat<double>, Mat<double>> favar_extract_factors_(const Mat<double>& X, int n_factors) {  
   // Center the data
   Mat<double> X_centered = X.each_row() - mean(X, 0);
@@ -1087,51 +1368,23 @@ std::pair<Mat<double>, Mat<double>> favar_extract_factors_(const Mat<double>& X,
 }
 
 // Estimate factor VAR: F_t = Phi_1*F_{t-1} + ... + Phi_p*F_{t-p} + v_t
-Mat<double> favar_factor_var_(const Mat<double>& F, int p_f, bool include_const = true) {
-  int N = F.n_rows;
-  int n_factors = F.n_cols;
+Mat<double> favar_factor_var_(const Mat<double>& F, int p, bool include_const = false) {
+  int T = F.n_rows;
 
-  // Handle p_f = 0 case: no factor dynamics, just return constant term
-  if (p_f == 0) {
-    if (include_const) {
-      // Return mean of factors as constant
-      return mean(F, 0).t();  // Column vector of means
-    } else {
-      // Return zeros
-      return zeros<Mat<double>>(1, n_factors);
-    }
-  }
-
-  if (N <= p_f) {
-    throw std::runtime_error("Sample size must be greater than factor lag order p_f");
+  if (p == 0 || T <= p) {
+    throw std::runtime_error("Invalid lag order for factor VAR");
   }
   
-  // Create lagged factors
-  Mat<double> F_lag = create_lags_(F, p_f);
-  
-  // Dependent variable (after losing p_f observations)
-  Mat<double> F_dep = F.rows(p_f, F.n_rows-1);
-  
-  // Add constant if requested
-  Mat<double> X;
-  if (include_const) {
-    Mat<double> ones(F_lag.n_rows, 1, fill::ones);
-    X = join_horiz(ones, F_lag);
-  } else {
-    X = F_lag;
-  }
-  
-  // Estimate factor VAR coefficients: Phi = (X'X)^(-1)(X'F)
-  Mat<double> XtX = X.t() * X;
-  Mat<double> XtX_inv = inv(XtX);
-  Mat<double> Phi = XtX_inv * X.t() * F_dep;
+  // Use existing VAR estimation function
+  Mat<double> Phi = var_estimate_(as_doubles_matrix(F), p, include_const);
   
   return Phi;
 }
 
-// Estimate augmented VAR: y_t = B(L)*y_{t-1} + C(L)*F_t + u_t
-std::tuple<Mat<double>, Mat<double>> favar_augmented_var_(
-    const Mat<double>& y, const Mat<double>& F, int p_y, int p_f, bool include_const = true) {
+// Estimate augmented VAR: y_t = B(L)*y_{t-1} + C(L)*F_{t-1} + u_t
+// Uses only LAGGED factors to avoid data leakage
+std::pair<Mat<double>, Mat<double>> favar_augmented_var_(
+    const Mat<double>& y, const Mat<double>& F, int p_y, int p_f, bool include_const = false) {
   
   int T = y.n_rows;
   int K = y.n_cols;
@@ -1139,45 +1392,36 @@ std::tuple<Mat<double>, Mat<double>> favar_augmented_var_(
   int max_p = std::max(p_y, p_f);
   
   if (T <= max_p) {
-    throw std::runtime_error("Sample size must be greater than maximum lag order");
+    throw std::runtime_error("Sample size must be greater than lag order");
   }
   
   // Create lagged y variables
   Mat<double> y_lag;
-  if (p_y > 0) {
-    y_lag = create_lags_(y, p_y);
-    // Align with maximum lag
-    if (p_y < max_p) {
-      Mat<double> y_lag_aligned = y_lag.rows(max_p - p_y, y_lag.n_rows - 1);
-      y_lag = y_lag_aligned;
-    }
-  }
-  
-  // Create lagged and contemporaneous factors
-  Mat<double> F_regressors;
-  if (p_f > 0) {
-    // Include lagged factors: F_{t-1}, ..., F_{t-p_f}
-    Mat<double> F_lag = create_lags_(F, p_f);
-    // Align with maximum lag
-    if (p_f < max_p) {
-      Mat<double> F_lag_aligned = F_lag.rows(max_p - p_f, F_lag.n_rows - 1);
-      F_lag = F_lag_aligned;
-    }
-    
-    // Include contemporaneous factors: F_t
-    Mat<double> F_contemp = F.rows(max_p, F.n_rows - 1);
-    
-    // Combine: [F_t, F_{t-1}, ..., F_{t-p_f}]
-    F_regressors = join_horiz(F_contemp, F_lag);
-  } else {
-    // Only contemporaneous factors
-    F_regressors = F.rows(max_p, F.n_rows - 1);
-  }
-  
-  // Dependent variable (after losing max_p observations)
   Mat<double> y_dep = y.rows(max_p, T - 1);
   
-  // Combine regressors: [y_{t-1}, ..., y_{t-p_y}, F_t, F_{t-1}, ..., F_{t-p_f}]
+  if (p_y > 0) {
+    y_lag = create_lags_(y, p_y);
+    // Align if needed
+    if (p_y < max_p) {
+      y_lag = y_lag.rows(max_p - p_y, y_lag.n_rows - 1);
+    }
+  }
+  
+  // Create factor regressors: [F_{t-1}, ..., F_{t-p_f}] (only lagged factors)
+  Mat<double> F_regressors;
+  
+  if (p_f > 0) {
+    Mat<double> F_lag = create_lags_(F, p_f);
+    // Align if needed
+    if (p_f < max_p) {
+      F_lag = F_lag.rows(max_p - p_f, F_lag.n_rows - 1);
+    }
+    F_regressors = F_lag;
+  } else {
+    throw std::runtime_error("p_f must be at least 1 for FAVAR");
+  }
+  
+  // Combine regressors: [y_{t-1}, ..., y_{t-p_y}, F_{t-1}, ..., F_{t-p_f}]
   Mat<double> X;
   if (p_y > 0) {
     X = join_horiz(y_lag, F_regressors);
@@ -1192,58 +1436,56 @@ std::tuple<Mat<double>, Mat<double>> favar_augmented_var_(
   }
   
   // Estimate coefficients: [B, C] = (X'X)^(-1)(X'y)
-  Mat<double> XtX = X.t() * X;
-  Mat<double> XtX_inv = inv(XtX);
-  Mat<double> beta = XtX_inv * X.t() * y_dep;
+  Mat<double> beta = solve(X.t() * X, X.t() * y_dep);
   
-  // Split coefficients into B (for y lags) and C (for factors)
-  Mat<double> B, C;
+  // Extract factor coefficients C
   int start_idx = include_const ? 1 : 0;
+  int factor_start = start_idx + (p_y > 0 ? K * p_y : 0);
+  Mat<double> C = beta.rows(factor_start, beta.n_rows - 1);
   
-  if (p_y > 0) {
-    B = beta.rows(start_idx, start_idx + K * p_y - 1);
-    C = beta.rows(start_idx + K * p_y, beta.n_rows - 1);
-  } else {
-    B = zeros<Mat<double>>(0, K);  // No y lags
-    C = beta.rows(start_idx, beta.n_rows - 1);
-  }
-  
-  return std::make_tuple(beta, C);  // Return full coefficient matrix and factor coefficients
+  return std::make_pair(beta, C);
 }
 
 // Compute FAVAR fitted values and residuals
 std::pair<Mat<double>, Mat<double>> favar_fitted_resid_(
     const Mat<double>& y, const Mat<double>& F, const Mat<double>& beta,
-    int p_y, int p_f, bool include_const = true) {
+    int p_y, int p_f, bool include_const = false) {
   
   int T = y.n_rows;
   int max_p = std::max(p_y, p_f);
   
-  // Create same regressor matrix as in estimation
-  Mat<double> y_lag;
+  // Reconstruct regressor matrix
+  Mat<double> y_dep = y.rows(max_p, T - 1);
+  Mat<double> X;
+  
   if (p_y > 0) {
-    y_lag = create_lags_(y, p_y);
+    Mat<double> y_lag = create_lags_(y, p_y);
     if (p_y < max_p) {
       y_lag = y_lag.rows(max_p - p_y, y_lag.n_rows - 1);
     }
-  }
-  
-  Mat<double> F_regressors;
-  if (p_f > 0) {
-    Mat<double> F_lag = create_lags_(F, p_f);
-    if (p_f < max_p) {
-      F_lag = F_lag.rows(max_p - p_f, F_lag.n_rows - 1);
+    
+    Mat<double> F_regressors;
+    
+    if (p_f > 0) {
+      Mat<double> F_lag = create_lags_(F, p_f);
+      if (p_f < max_p) {
+        F_lag = F_lag.rows(max_p - p_f, F_lag.n_rows - 1);
+      }
+      F_regressors = F_lag;
     }
-    Mat<double> F_contemp = F.rows(max_p, F.n_rows - 1);
-    F_regressors = join_horiz(F_contemp, F_lag);
-  } else {
-    F_regressors = F.rows(max_p, F.n_rows - 1);
-  }
-  
-  Mat<double> X;
-  if (p_y > 0) {
+    
     X = join_horiz(y_lag, F_regressors);
   } else {
+    Mat<double> F_regressors;
+    
+    if (p_f > 0) {
+      Mat<double> F_lag = create_lags_(F, p_f);
+      if (p_f < max_p) {
+        F_lag = F_lag.rows(max_p - p_f, F_lag.n_rows - 1);
+      }
+      F_regressors = F_lag;
+    }
+    
     X = F_regressors;
   }
   
@@ -1252,9 +1494,6 @@ std::pair<Mat<double>, Mat<double>> favar_fitted_resid_(
     X = join_horiz(ones, X);
   }
   
-  // Dependent variable
-  Mat<double> y_dep = y.rows(max_p, T - 1);
-  
   // Compute fitted values and residuals
   Mat<double> y_fitted = X * beta;
   Mat<double> residuals = y_dep - y_fitted;
@@ -1262,64 +1501,48 @@ std::pair<Mat<double>, Mat<double>> favar_fitted_resid_(
   return std::make_pair(y_fitted, residuals);
 }
 
-// FAVAR forecasting
+// FAVAR forecasting with lagged factors only
 Mat<double> favar_forecast_(const Mat<double>& y, const Mat<double>& F,
                            const Mat<double>& beta_y, const Mat<double>& Phi_f,
-                           int p_y, int p_f, int h, bool include_const = true) {
+                           int p_y, int p_f, int h, bool include_const = false) {
   
   int T = y.n_rows;
   int K = y.n_cols;
   int n_factors = F.n_cols;
-
-  int Phi_r = Phi_f.n_rows;
-  int Phi_c = Phi_f.n_cols;
   
   // Initialize forecasts
   Mat<double> y_forecast(h, K);
   Mat<double> F_forecast(h, n_factors);
   
-  // Get initial conditions
-  Mat<double> y_init = y.rows(T - std::max(p_y, 1), T - 1);
+  // Step 1: Forecast factors using factor VAR
+  Mat<double> F_init = F.rows(T - p_f, T - 1);
+  Mat<double> F_current = vectorise(F_init.t()).t();
   
-  // Handle factor forecasting based on p_f
-  if (p_f == 0) {
-    // No factor dynamics: use constant (mean or zero)
-    for (int i = 0; i < h; ++i) {
-      if (Phi_r == 1 && Phi_c == n_factors) {
-        F_forecast.row(i) = Phi_f;  // Constant term
-      } else {
-        F_forecast.row(i) = zeros<Mat<double>>(1, n_factors);
-      }
+  for (int i = 0; i < h; ++i) {
+    Mat<double> X_f;
+    if (include_const) {
+      Mat<double> ones(1, 1, fill::ones);
+      X_f = join_horiz(ones, F_current);
+    } else {
+      X_f = F_current;
     }
-  } else {
-    // Forecast factors using factor VAR
-    Mat<double> F_init = F.rows(T - std::max(p_f, 1), T - 1);
-    Mat<double> F_current = vectorise(F_init.t()).t();
     
-    for (int i = 0; i < h; ++i) {
-      Mat<double> X_f;
-      if (include_const) {
-        Mat<double> ones(1, 1, fill::ones);
-        X_f = join_horiz(ones, F_current);
-      } else {
-        X_f = F_current;
-      }
-      
-      Mat<double> F_pred = X_f * Phi_f;
-      F_forecast.row(i) = F_pred;
-      
-      // Update for next iteration
-      if (i < h - 1 && p_f > 1) {
-        Mat<double> new_F_current = join_horiz(F_pred, F_current.cols(0, n_factors * (p_f - 1) - 1));
-        F_current = new_F_current;
-      } else if (p_f == 1) {
-        F_current = F_pred;
-      }
+    Mat<double> F_pred = X_f * Phi_f;
+    F_forecast.row(i) = F_pred;
+    
+    // Update state for next iteration
+    if (i < h - 1 && p_f > 1) {
+      F_current = join_horiz(F_pred, F_current.cols(0, n_factors * (p_f - 1) - 1));
+    } else if (p_f == 1) {
+      F_current = F_pred;
     }
   }
   
-  // Now forecast y using factor forecasts
-  Mat<double> y_current = vectorise(y_init.t()).t();
+  // Step 2: Forecast y using forecasted factors (lagged factors only)
+  Mat<double> y_init = y.rows(T - std::max(p_y, 1), T - 1);
+  Mat<double> y_current = (p_y > 0) ? vectorise(y_init.t()).t() : Mat<double>();
+  
+  // Extend F with forecasts for easier indexing
   Mat<double> F_extended = join_vert(F, F_forecast);
   
   for (int i = 0; i < h; ++i) {
@@ -1330,24 +1553,29 @@ Mat<double> favar_forecast_(const Mat<double>& y, const Mat<double>& F,
       X_y = y_current;
     }
     
-    // Add factors (contemporaneous and lagged)
-    Mat<double> F_for_pred = F_extended.row(T + i);
+    // Add lagged factors: F_{T+i-1}, ..., F_{T+i-p_f} (no contemporaneous factor)
+    Mat<double> F_current_forecast;
     if (p_f > 0) {
       for (int lag = 1; lag <= p_f; ++lag) {
         if (T + i - lag >= 0) {
           Mat<double> F_lag_t = F_extended.row(T + i - lag);
-          F_for_pred = join_horiz(F_for_pred, F_lag_t);
+          if (lag == 1) {
+            F_current_forecast = F_lag_t;
+          } else {
+            F_current_forecast = join_horiz(F_current_forecast, F_lag_t);
+          }
         }
       }
     }
     
+    // Combine y lags and factors
     if (p_y > 0) {
-      X_y = join_horiz(X_y, F_for_pred);
+      X_y = join_horiz(X_y, F_current_forecast);
     } else {
-      X_y = F_for_pred;
+      X_y = F_current_forecast;
     }
     
-    // Add constant
+    // Add constant if needed
     if (include_const) {
       Mat<double> ones(1, 1, fill::ones);
       X_y = join_horiz(ones, X_y);
@@ -1357,9 +1585,8 @@ Mat<double> favar_forecast_(const Mat<double>& y, const Mat<double>& F,
     y_forecast.row(i) = y_pred;
     
     // Update y_current for next iteration
-    if (i < h - 1 && p_y > 1) {
-      Mat<double> new_y_current = join_horiz(y_pred, y_current.cols(0, K * (p_y - 1) - 1));
-      y_current = new_y_current;
+    if (p_y > 1 && i < h - 1) {
+      y_current = join_horiz(y_pred, y_current.cols(0, K * (p_y - 1) - 1));
     } else if (p_y == 1) {
       y_current = y_pred;
     }
@@ -1369,52 +1596,66 @@ Mat<double> favar_forecast_(const Mat<double>& y, const Mat<double>& F,
 }
 
 /* roxygen
-@title Main FAVAR estimation function
+@title Factor-Augmented VAR (FA-VAR) Model
+@description Estimates a FA-VAR model using PCA for factor extraction.
+@param y Time series vector (T x 1)
+@param n_lags Number of lags of y to include in X for factor extraction
+@param n_factors Number of latent factors to extract (r < n_lags + 1)
+@param p_y VAR lag order for y dynamics
+@param p_f VAR lag order for factor dynamics
+@param include_const Include constant term in VARs
+@param forecast_h Forecast horizon (0 for no forecast)
 @export
 */
-[[cpp4r::register]] list favar_model(const doubles_matrix<>& y, const doubles_matrix<>& x,
+[[cpp4r::register]] list favar_model(const doubles_matrix<>& y, int n_lags,
                                      int n_factors, int p_y = 1, int p_f = 1,
-                                     bool include_const = true, int forecast_h = 0) {
+                                     bool include_const = false, int forecast_h = 0) {
   
   Mat<double> Y = as_Mat(y);
-  Mat<double> X = as_Mat(x);
-  
   int T = Y.n_rows;
   int K = Y.n_cols;
-  int N = X.n_rows;
-  int P = X.n_cols;
   
-  if (T != N) {
-    throw std::runtime_error("y and X must have the same number of observations");
+  if (K != 1) {
+    throw std::runtime_error("FA-VAR requires univariate y (single column)");
   }
   
-  if (T <= std::max(p_y, p_f)) {
-    throw std::runtime_error("Sample size must be greater than maximum lag order");
+  if (T <= n_lags + std::max(p_y, p_f)) {
+    throw std::runtime_error("Insufficient observations for lags");
   }
   
-  if (n_factors >= P) {
-    throw std::runtime_error("Number of factors must be less than number of X variables");
+  // Step 1: Create X matrix [y_t, y_{t-1}, ..., y_{t-n_lags}]
+  Mat<double> X_lags = create_lags_(Y, n_lags);
+  Mat<double> Y_contemp = Y.rows(n_lags, T - 1);
+  Mat<double> X = join_horiz(Y_contemp, X_lags);
+  
+  int N = X.n_cols;  // n_lags + 1
+  
+  if (n_factors >= N) {
+    throw std::runtime_error("Number of factors must be less than number of variables in X");
   }
   
-  // Step 1: Extract factors from large dataset X
+  // Step 2: Extract factors from X using PCA
   auto factor_result = favar_extract_factors_(X, n_factors);
   Mat<double> F = factor_result.first;
   Mat<double> Lambda = factor_result.second;
   
-  // Step 2: Estimate factor VAR
+  // Step 3: Estimate factor VAR
   Mat<double> Phi = favar_factor_var_(F, p_f, include_const);
   
-  // Step 3: Estimate augmented VAR
-  auto var_result = favar_augmented_var_(Y, F, p_y, p_f, include_const);
-  Mat<double> beta = std::get<0>(var_result);
-  Mat<double> C = std::get<1>(var_result);
+  // Step 4: Estimate augmented VAR (y on its lags + lagged factors only)
+  // Need to align y with F (both start at observation n_lags)
+  Mat<double> Y_aligned = Y.rows(n_lags, T - 1);
   
-  // Step 4: Compute fitted values and residuals
-  auto fitted_resid = favar_fitted_resid_(Y, F, beta, p_y, p_f, include_const);
+  auto var_result = favar_augmented_var_(Y_aligned, F, p_y, p_f, include_const);
+  Mat<double> beta = var_result.first;
+  Mat<double> C = var_result.second;
+  
+  // Step 5: Compute fitted values and residuals
+  auto fitted_resid = favar_fitted_resid_(Y_aligned, F, beta, p_y, p_f, include_const);
   Mat<double> y_fitted = fitted_resid.first;
   Mat<double> residuals = fitted_resid.second;
   
-  // Compute residual covariance matrix
+  // Compute residual covariance
   Mat<double> Sigma = (residuals.t() * residuals) / (residuals.n_rows - beta.n_rows);
   
   // Compute factor residuals
@@ -1423,157 +1664,186 @@ Mat<double> favar_forecast_(const Mat<double>& y, const Mat<double>& F,
   Mat<double> Omega = (F_residuals.t() * F_residuals) / (F_residuals.n_rows - Phi.n_rows);
   
   // Compute AIC
-  int n_params = beta.n_rows * K;  // Total number of parameters in augmented VAR
+  int n_params = beta.n_rows * K;
   double aic = aic_metric(residuals, n_params);
   
   // Prepare results list
-  writable::list result(16);
+  writable::list result;
+  
+  result.push_back({"coefficients"_nm = as_doubles_matrix(beta)});
+  result.push_back({"factor_coefficients"_nm = as_doubles_matrix(Phi)});
+  result.push_back({"factor_loadings"_nm = as_doubles_matrix(Lambda)});
+  result.push_back({"factors"_nm = as_doubles_matrix(F)});
+  result.push_back({"fitted_values"_nm = as_doubles_matrix(y_fitted)});
 
-  result[0] = as_doubles_matrix(beta);
-  result[1] = as_doubles_matrix(Phi);
-  result[2] = as_doubles_matrix(Lambda);
-  result[3] = as_doubles_matrix(F);
-  result[4] = as_doubles_matrix(y_fitted);
-  result[5] = as_doubles_matrix(residuals);
-  result[6] = as_doubles_matrix(F_residuals);
-  result[7] = as_doubles_matrix(Sigma);
-  result[8] = as_doubles_matrix(Omega);
-  result[9] = cpp4r::as_sexp(n_factors);
-  result[10] = cpp4r::as_sexp(p_y);
-  result[11] = cpp4r::as_sexp(p_f);
-  result[12] = cpp4r::as_sexp(K);
-  result[13] = cpp4r::as_sexp(N);
-  result[14] = cpp4r::as_sexp(T - std::max(p_y, p_f));
-  result[15] = cpp4r::as_sexp(include_const);
+  result.push_back({"residuals"_nm = as_doubles_matrix(residuals)});
+  result.push_back({"factor_residuals"_nm = as_doubles_matrix(F_residuals)});
+  result.push_back({"sigma"_nm = as_doubles_matrix(Sigma)});
+  result.push_back({"omega"_nm = as_doubles_matrix(Omega)});
+  result.push_back({"n_factors"_nm = cpp4r::as_sexp(n_factors)});
 
-  result.names() = {"coefficients", "factor_coefficients", "factor_loadings", "factors",
-                    "fitted_values", "residuals", "factor_residuals", "sigma", "omega",
-                    "n_factors", "lag_order_y", "lag_order_f", "n_variables", "n_observables",
-                    "n_obs", "include_const"};
+  result.push_back({"n_lags"_nm = cpp4r::as_sexp(n_lags)});
+  result.push_back({"lag_order_y"_nm = cpp4r::as_sexp(p_y)});
+  result.push_back({"lag_order_f"_nm = cpp4r::as_sexp(p_f)});
+  result.push_back({"n_obs"_nm = cpp4r::as_sexp(y_fitted.n_rows)});
+  result.push_back({"include_const"_nm = cpp4r::as_sexp(include_const)});
+
+  // Compute RMSFE and MAE using helper functions
+  // Need to align Y_aligned with fitted values (both start after max_p lags)
+  int max_p = std::max(p_y, p_f);
+  Mat<double> Y_actual = Y_aligned.rows(max_p, Y_aligned.n_rows - 1);
+  
+  // result.push_back({"observed_values"_nm = as_doubles_matrix(Y_actual)});
+  result.push_back({"rmsfe"_nm = cpp4r::as_sexp(rmsfe(Y_actual, y_fitted))});
+  result.push_back({"mae"_nm = cpp4r::as_sexp(mae(Y_actual, y_fitted))});
+  result.push_back({"aic"_nm = cpp4r::as_sexp(aic)});
   
   // Add forecasts if requested
   if (forecast_h > 0) {
-    Mat<double> forecasts = favar_forecast_(Y, F, beta, Phi, p_y, p_f, forecast_h, include_const);
+    Mat<double> forecasts = favar_forecast_(Y_aligned, F, beta, Phi, p_y, p_f, forecast_h, include_const);
     result.push_back({"forecasts"_nm = as_doubles_matrix(forecasts)});
     result.push_back({"forecast_horizon"_nm = cpp4r::as_sexp(forecast_h)});
   }
-
-  // Add model metrics
-  result.push_back({"rmsfe"_nm = cpp4r::as_sexp(rmsfe(Y.rows(std::max(p_y, p_f), T-1), y_fitted))});
-  result.push_back({"mae"_nm = cpp4r::as_sexp(mae(Y.rows(std::max(p_y, p_f), T-1), y_fitted))});
-  result.push_back({"aic"_nm = cpp4r::as_sexp(aic)});
   
   return result;
 }
 ```
 
-## DFM model
+## DFM
 
 ```cpp
-/*
-==============================================
-Dynamic Factor Model (DFM)
-==============================================
-*/
+/* Dynamic Factor Model (DFM) */
 
-// Simple PCA factor extraction (similar to FA-VAR)
+// Standardize data: mean 0 and common variance (to avoid scaling issues)
+// Returns: standardized data, column means, and common std dev
+std::tuple<Mat<double>, rowvec, double> dfm_standardize_(const Mat<double>& X) {
+  int T = X.n_rows;
+  int N = X.n_cols;
+  
+  // Center each variable and save means
+  rowvec means = mean(X, 0);
+  Mat<double> X_centered = X.each_row() - means;
+  
+  // Compute common variance (pooled across all variables)
+  double total_var = accu(square(X_centered)) / (T * N);
+  double common_sd = sqrt(total_var);
+  
+  // Standardize to common variance
+  Mat<double> X_std = X_centered / common_sd;
+  
+  return std::make_tuple(X_std, means, common_sd);
+}
+
+// Unstandardize data back to original scale
+Mat<double> dfm_unstandardize_(const Mat<double>& X_std, const rowvec& means, double common_sd) {
+  // X_unstd = X_std * common_sd + means (broadcast means across rows)
+  Mat<double> X_unstd = X_std * common_sd;
+  X_unstd.each_row() += means;
+  return X_unstd;
+}
+
+// PCA-based factor extraction for initialization
 std::pair<Mat<double>, Mat<double>> dfm_extract_factors_(const Mat<double>& X, int n_factors) {
-  // Center the data
-  Mat<double> X_centered = X.each_row() - mean(X, 0);
+  // X should already be standardized
   
   // Perform SVD on X' (N x T matrix)
   Mat<double> U, V;
   vec s;
-  svd_econ(U, s, V, X_centered.t());
+  svd_econ(U, s, V, X.t());
   
   // Factor loadings (first n_factors principal components)
   Mat<double> Lambda = U.cols(0, n_factors-1);
   
   // Common factors (T x n_factors)
-  Mat<double> F = X_centered * Lambda;
+  Mat<double> F = X * Lambda;
   
   return std::make_pair(F, Lambda);
 }
 
-// Initialize DFM parameters using PCA and simple VAR
+// Initialize DFM parameters using PCA
 std::tuple<Mat<double>, Mat<double>, Mat<double>, Mat<double>> dfm_init_(
     const Mat<double>& X, int n_factors, int p) {
+  int T = X.n_rows;
   
   // Step 1: Extract factors using PCA
   auto factor_result = dfm_extract_factors_(X, n_factors);
   Mat<double> F = factor_result.first;
   Mat<double> Lambda = factor_result.second;
   
-  // Step 2: Estimate factor VAR (reuse existing functions)
+  // Step 2: Estimate factor dynamics F_t = A * F_{t-1} + eta_t
+  // Convert VAR(p) to VAR(1) in companion form
   Mat<double> A;
   Mat<double> Q;
   
   if (p > 0) {
-    // Use same approach as FA-VAR for factor dynamics
-    A = var_estimate_(as_doubles_matrix(F), p, true);
+    // Estimate VAR(p) for factors
+    Mat<double> A_var = var_estimate_(as_doubles_matrix(F), p, false);
+    
+    // Create companion form matrix
+    A = var_companion_(A_var, p, n_factors, false);
     
     // Compute residual covariance
-    auto fitted_resid = var_fitted_resid_(F, A, p, true);
+    auto fitted_resid = var_fitted_resid_(F, A_var, p, false);
     Mat<double> eta = fitted_resid.second;
-    Q = (eta.t() * eta) / (eta.n_rows - A.n_rows);
+    
+    // Q is for the companion form (only top-left block is non-zero)
+    int state_dim = n_factors * p;
+    Q = zeros<Mat<double>>(state_dim, state_dim);
+    Q.submat(0, 0, n_factors-1, n_factors-1) = (eta.t() * eta) / eta.n_rows;
   } else {
-    // Static factor model: no dynamics, just return mean
-    A = mean(F, 0).t();  // Column vector of factor means
-    Q = eye<Mat<double>>(n_factors, n_factors) * 0.1;
+    // Static factor model: F_t = constant (no dynamics)
+    A = eye<Mat<double>>(n_factors, n_factors);
+    Q = eye<Mat<double>>(n_factors, n_factors) * 0.01;
   }
   
-  // Initialize R as diagonal
-  Mat<double> X_fitted = F * Lambda.t();
+  // Initialize R as diagonal (idiosyncratic errors)
+  Mat<double> X_fitted = F.cols(0, n_factors-1) * Lambda.t();
   Mat<double> residuals = X - X_fitted;
-  Mat<double> R = diagmat(sum(square(residuals), 0) / X.n_rows);
+  Mat<double> R = diagmat(sum(square(residuals), 0) / T);
   
   return std::make_tuple(Lambda, A, Q, R);
 }
 
-// Kalman Filter for DFM
-std::tuple<Mat<double>, Mat<double>, Mat<double>> dfm_kalman_(
+// Kalman Filter for DFM state-space model
+std::tuple<Mat<double>, Mat<double>, double> dfm_kalman_(
     const Mat<double>& X, const Mat<double>& Lambda, const Mat<double>& A,
     const Mat<double>& Q, const Mat<double>& R, int n_factors, int p) {
   
   int T = X.n_rows;
   int N = X.n_cols;
+  int state_dim = (p > 0) ? n_factors * p : n_factors;
   
-  // Initialize state variables
-  Mat<double> F_pred(T, n_factors * std::max(p, 1));  // Predicted factors
-  Mat<double> F_upd(T, n_factors * std::max(p, 1));   // Updated factors
-  Mat<double> P_pred(n_factors * std::max(p, 1), n_factors * std::max(p, 1)); // Predicted covariance
-  Mat<double> P_upd(n_factors * std::max(p, 1), n_factors * std::max(p, 1));  // Updated covariance
+  // State variables
+  Mat<double> F_pred(T, state_dim);  // Predicted states
+  Mat<double> F_upd(T, state_dim);   // Updated states
+  Mat<double> P_pred(state_dim, state_dim);  // Predicted covariance
+  Mat<double> P_upd(state_dim, state_dim);   // Updated covariance
   
   // Log likelihood
   double loglik = 0.0;
   
-  // Observation matrix H (maps states to factors)
-  Mat<double> H = zeros<Mat<double>>(N, n_factors * std::max(p, 1));
-  H.submat(0, 0, N-1, n_factors-1) = Lambda;
+  // Observation matrix H: maps state to observables
+  // X_t = H * F_t + u_t
+  Mat<double> H = zeros<Mat<double>>(N, state_dim);
+  H.submat(0, 0, N-1, n_factors-1) = Lambda;  // Only first n_factors matter
   
-  // Transition matrix F_trans
-  Mat<double> F_trans;
-  if (p > 0) {
-    F_trans = var_companion_(A, p, n_factors, true);
-  } else {
-    F_trans = eye<Mat<double>>(n_factors, n_factors);
-  }
+  // Transition matrix (A is already in companion form if p > 1)
+  Mat<double> F_trans = A;
   
-  // Process noise covariance
-  Mat<double> Q_full = zeros<Mat<double>>(n_factors * std::max(p, 1), n_factors * std::max(p, 1));
-  Q_full.submat(0, 0, n_factors-1, n_factors-1) = Q;
+  // Process noise covariance (Q is already in companion form)
+  Mat<double> Q_full = Q;
   
-  // Initial conditions
-  vec mu0 = zeros<vec>(n_factors * std::max(p, 1));
-  Mat<double> P0 = eye<Mat<double>>(n_factors * std::max(p, 1), n_factors * std::max(p, 1));
+  // Initial conditions: diffuse prior
+  vec mu0 = zeros<vec>(state_dim);
+  Mat<double> P0 = eye<Mat<double>>(state_dim, state_dim) * 10.0;  // Diffuse
   
   // Kalman filter loop
   for (int t = 0; t < T; ++t) {
+    // Prediction step
     if (t == 0) {
       F_pred.row(t) = mu0.t();
       P_pred = P0;
     } else {
-      // Prediction step
       F_pred.row(t) = (F_trans * F_upd.row(t-1).t()).t();
       P_pred = F_trans * P_upd * F_trans.t() + Q_full;
     }
@@ -1587,25 +1857,26 @@ std::tuple<Mat<double>, Mat<double>, Mat<double>> dfm_kalman_(
     Mat<double> K = P_pred * H.t() * inv(S);
     
     F_upd.row(t) = F_pred.row(t) + (K * innov).t();
-    P_upd = (eye<Mat<double>>(P_pred.n_rows, P_pred.n_cols) - K * H) * P_pred;
+    P_upd = (eye<Mat<double>>(state_dim, state_dim) - K * H) * P_pred;
     
-    // Log likelihood
-    loglik += -0.5 * (N * log(2 * datum::pi) + log(det(S)) + dot(innov, solve(S, innov)));
+    // Log likelihood contribution
+    double log_det_S = log(det(S));
+    double mahal = dot(innov, solve(S, innov));
+    loglik += -0.5 * (N * log(2 * datum::pi) + log_det_S + mahal);
   }
   
-  // Extract just the factors (first n_factors columns)
+  // Extract just the factors (first n_factors columns of state)
   Mat<double> F_smooth = F_upd.cols(0, n_factors-1);
   
-  return std::make_tuple(F_smooth, F_upd, loglik * arma::ones<Mat<double>>(1, 1));
+  return std::make_tuple(F_smooth, F_upd, loglik);
 }
 
-// Simplified EM Algorithm for DFM parameter estimation
+// EM Algorithm for DFM parameter estimation
 std::tuple<Mat<double>, Mat<double>, Mat<double>, Mat<double>> dfm_em_(
     const Mat<double>& X, int n_factors, int p, int max_iter = 50, double tol = 1e-4) {
-  
   int T = X.n_rows;
   
-  // Initialize parameters (simplified)
+  // Initialize parameters
   auto init_params = dfm_init_(X, n_factors, p);
   Mat<double> Lambda = std::get<0>(init_params);
   Mat<double> A = std::get<1>(init_params);
@@ -1614,35 +1885,40 @@ std::tuple<Mat<double>, Mat<double>, Mat<double>, Mat<double>> dfm_em_(
   
   double prev_loglik = -datum::inf;
   
-  // Simplified EM iterations
+  // EM iterations
   for (int iter = 0; iter < max_iter; ++iter) {
-    // E-step: Kalman filter and smoother
+    // E-step: Kalman filter to get expected factors
     auto kalman_result = dfm_kalman_(X, Lambda, A, Q, R, n_factors, p);
     Mat<double> F_smooth = std::get<0>(kalman_result);
-    double loglik = std::get<2>(kalman_result)(0, 0);
+    double loglik = std::get<2>(kalman_result);
     
-    // M-step: Simplified parameter updates
+    // M-step: Update parameters given expected factors
     
-    // Update Lambda (factor loadings) - simplified
-    Lambda = solve(F_smooth.t() * F_smooth, F_smooth.t() * X).t();
+    // Update Lambda: X_t = Lambda * F_t + u_t
+    // Lambda_new = (sum_t X_t F_t') * (sum_t F_t F_t')^{-1}
+    Lambda = (X.t() * F_smooth) * inv(F_smooth.t() * F_smooth);
     
-    // Update R (diagonal only) - simplified  
+    // Update R (diagonal idiosyncratic covariance)
     Mat<double> residuals = X - F_smooth * Lambda.t();
     R = diagmat(sum(square(residuals), 0) / T);
     
-    // Update A and Q (factor dynamics) - reuse VAR functions
+    // Update A and Q (factor dynamics)
     if (p > 0) {
-      A = var_estimate_(as_doubles_matrix(F_smooth), p, true);
-      auto factor_resid = var_fitted_resid_(F_smooth, A, p, true);
+      // Re-estimate VAR(p) for updated factors
+      Mat<double> A_var = var_estimate_(as_doubles_matrix(F_smooth), p, false);
+      A = var_companion_(A_var, p, n_factors, false);
+      
+      // Update Q
+      auto factor_resid = var_fitted_resid_(F_smooth, A_var, p, false);
       Mat<double> eta = factor_resid.second;
-      Q = (eta.t() * eta) / (eta.n_rows - A.n_rows);
-    } else {
-      // Static model: update mean
-      A = mean(F_smooth, 0).t();
-      // Keep Q constant for static model
+      
+      int state_dim = n_factors * p;
+      Q = zeros<Mat<double>>(state_dim, state_dim);
+      Q.submat(0, 0, n_factors-1, n_factors-1) = (eta.t() * eta) / eta.n_rows;
     }
+    // For static model (p=0), A and Q remain fixed
     
-    // Simple convergence check
+    // Check convergence
     if (iter > 0 && abs(loglik - prev_loglik) < tol) {
       break;
     }
@@ -1653,62 +1929,26 @@ std::tuple<Mat<double>, Mat<double>, Mat<double>, Mat<double>> dfm_em_(
 }
 
 // DFM forecasting using state-space representation
-Mat<double> dfm_forecast_(const Mat<double>& F, const Mat<double>& Lambda,
-                         const Mat<double>& A, const Mat<double>& Q, 
-                         int n_factors, int p, int h) {
-  
-  int T = F.n_rows;
+Mat<double> dfm_forecast_(const Mat<double>& F_state, const Mat<double>& Lambda,
+                         const Mat<double>& A, int n_factors, int p, int h) {
   int N = Lambda.n_rows;
-
-  int A_r = A.n_rows;
-  int A_c = A.n_cols;
   
   // Initialize forecasts
   Mat<double> F_forecast(h, n_factors);
   Mat<double> X_forecast(h, N);
   
-  // Get initial conditions for factors
-  Mat<double> F_init = F.rows(T - std::max(p, 1), T - 1);
+  // Current state (last row of F_state which is in companion form)
+  Mat<double> F_current = F_state.row(F_state.n_rows - 1);
   
-  // Create transition matrix for factor dynamics
-  Mat<double> F_trans;
-  if (p > 0) {
-    F_trans = var_companion_(A, p, n_factors, true);
-  } else {
-    F_trans = eye<Mat<double>>(n_factors, n_factors);
-  }
-  
-  // Forecast factors using VAR dynamics
-  Mat<double> F_state;
-  if (p > 1) {
-    // Initialize with companion form state
-    F_state = vectorise(F_init.t()).t();
-  } else if (p == 1) {
-    // For p=1, just use last observation
-    F_state = F.row(T - 1);
-  }
-  
+  // Forecast loop
   for (int i = 0; i < h; ++i) {
-    if (p > 0) {
-      // Predict next period factors using transition matrix
-      Mat<double> F_pred_state = (F_trans * F_state.t()).t();
-      
-      // Extract actual factors (first n_factors columns)
-      Mat<double> F_pred = F_pred_state.cols(0, n_factors - 1);
-      F_forecast.row(i) = F_pred;
-      
-      // Update state for next iteration
-      F_state = F_pred_state;
-    } else {
-      // Static factor model - use constant (mean from A)
-      if (A_r == n_factors && A_c == 1) {
-        F_forecast.row(i) = A.t();  // Use mean as constant
-      } else {
-        F_forecast.row(i) = F.row(T - 1);  // Fallback to last observation
-      }
-    }
+    // Predict next state: F_{t+h} = A^h * F_t
+    F_current = (A * F_current.t()).t();
     
-    // Forecast observables using factor loadings
+    // Extract actual factors (first n_factors elements of state)
+    F_forecast.row(i) = F_current.cols(0, n_factors - 1);
+    
+    // Forecast observables: X_{t+h} = Lambda * F_{t+h}
     X_forecast.row(i) = (Lambda * F_forecast.row(i).t()).t();
   }
   
@@ -1716,31 +1956,21 @@ Mat<double> dfm_forecast_(const Mat<double>& F, const Mat<double>& Lambda,
 }
 
 /* roxygen
-@title Main DFM estimation function
+@title Dynamic Factor Model (DFM)
+@description Estimates a Dynamic Factor Model using PCA initialization and EM algorithm with Kalman filter.
+@param x Matrix of observed variables (T x N)
+@param n_factors Number of latent factors (r < N)
+@param p VAR lag order for factor dynamics (0 for static model, recommend p=1 for small samples)
+@param max_iter Maximum EM iterations
+@param tol Convergence tolerance for log-likelihood
+@param forecast_h Forecast horizon (0 for no forecast)
 @export
 */
 [[cpp4r::register]] list dfm_model(const doubles_matrix<>& x, int n_factors, int p = 1,
-                                   bool include_const = true, int max_iter = 25, double tol = 1e-4,
-                                   int forecast_h = 0, int n_lags = 0) {
+                                   int max_iter = 50, double tol = 1e-4, int forecast_h = 0) {
   Mat<double> X_raw = as_Mat(x);
   int T = X_raw.n_rows;
-  int N_raw = X_raw.n_cols;
-  
-  Mat<double> X;
-  int N;
-  
-  // If univariate (N=1) and n_lags specified, create lagged matrix
-  if (N_raw == 1 && n_lags > 0) {
-    Mat<double> X_lagged = create_lags_(X_raw, n_lags);
-    // Join original with lags: [X_t, X_{t-1}, ..., X_{t-n_lags}]
-    Mat<double> X_contemp = X_raw.rows(n_lags, T - 1);
-    X = join_horiz(X_contemp, X_lagged);
-    T = X.n_rows;
-    N = X.n_cols;
-  } else {
-    X = X_raw;
-    N = N_raw;
-  }
+  int N = X_raw.n_cols;
   
   if (T <= p) {
     throw std::runtime_error("Sample size must be greater than lag order p");
@@ -1749,6 +1979,12 @@ Mat<double> dfm_forecast_(const Mat<double>& F, const Mat<double>& Lambda,
   if (n_factors >= N) {
     throw std::runtime_error("Number of factors must be less than number of variables");
   }
+
+  // Standardize data to mean 0 and common variance
+  auto standardize_result = dfm_standardize_(X_raw);
+  Mat<double> X = std::get<0>(standardize_result);
+  rowvec means = std::get<1>(standardize_result);
+  double common_sd = std::get<2>(standardize_result);
   
   // Estimate DFM parameters using EM algorithm
   auto em_result = dfm_em_(X, n_factors, p, max_iter, tol);
@@ -1757,168 +1993,77 @@ Mat<double> dfm_forecast_(const Mat<double>& F, const Mat<double>& Lambda,
   Mat<double> Q = std::get<2>(em_result);
   Mat<double> R = std::get<3>(em_result);
   
-  // Final Kalman filter to get factors
+  // Final Kalman filter to get smoothed factors
   auto kalman_result = dfm_kalman_(X, Lambda, A, Q, R, n_factors, p);
   Mat<double> F = std::get<0>(kalman_result);
-  double loglik = std::get<2>(kalman_result)(0, 0);
+  Mat<double> F_state = std::get<1>(kalman_result);
+  double loglik = std::get<2>(kalman_result);
   
-  // Compute fitted values and residuals
-  Mat<double> X_fitted = F * Lambda.t();
-  Mat<double> residuals = X - X_fitted;
+  // Compute fitted values on standardized scale
+  Mat<double> X_fitted_std = F * Lambda.t();
+  Mat<double> residuals_std = X - X_fitted_std;
+  
+  // Unstandardize fitted values to original scale
+  Mat<double> X_fitted = dfm_unstandardize_(X_fitted_std, means, common_sd);
+  Mat<double> residuals = X_raw - X_fitted;
   
   // Information criteria
-  int n_params = N * n_factors + n_factors * n_factors * p + n_factors + N;  // Lambda + A + Q + R
-  double aic = aic_metric(residuals, n_params);  // SSR-based AIC
-  
-  // Prepare results list
-  writable::list result(12);
-
-  result[0] = as_doubles_matrix(F);
-  result[1] = as_doubles_matrix(Lambda);
-  result[2] = as_doubles_matrix(A);
-  result[3] = as_doubles_matrix(Q);
-  result[4] = as_doubles_matrix(R);
-  result[5] = as_doubles_matrix(X_fitted);
-  result[6] = as_doubles_matrix(residuals);
-  result[7] = cpp4r::as_sexp(loglik);
-  result[8] = cpp4r::as_sexp(n_factors);
-  result[9] = cpp4r::as_sexp(p);
-  result[10] = cpp4r::as_sexp(N);
-  result[11] = cpp4r::as_sexp(T);
-
-  result.names() = {"factors", "loadings", "transition", "factor_cov", "idiosync_cov",
-                    "fitted_values", "residuals", "loglik",
-                    "n_factors", "lag_order", "n_variables", "n_obs"};
-  
-  // Add forecasts if requested
-  if (forecast_h > 0) {
-    Mat<double> forecasts = dfm_forecast_(F, Lambda, A, Q, n_factors, p, forecast_h);
-    result.push_back({"forecasts"_nm = as_doubles_matrix(forecasts)});
-    result.push_back({"forecast_horizon"_nm = cpp4r::as_sexp(forecast_h)});
-  }
-
-  // Add model metrics (only for first variable/column which is the contemporaneous value)
-  result.push_back({"rmsfe"_nm = cpp4r::as_sexp(rmsfe(X.col(0), X_fitted.col(0)))});
-  result.push_back({"mae"_nm = cpp4r::as_sexp(mae(X.col(0), X_fitted.col(0)))});
-  result.push_back({"aic"_nm = cpp4r::as_sexp(aic)});
-  
-  return result;
-}
-
-/* roxygen
-@title Predictive DFM
-@description Uses factors from covariates X to predict target variable y. This is similar to FA-VAR but uses DFM factor
-  extraction
-@export
-*/
-[[cpp4r::register]] list dfm_predict_model(const doubles_matrix<>& y, const doubles_matrix<>& x,
-                                           int n_factors, int p_y = 1, int p_f = 0,
-                                           bool include_const = true, int max_iter = 25, 
-                                           double tol = 1e-4, int forecast_h = 0) {
-  
-  Mat<double> Y = as_Mat(y);
-  Mat<double> X = as_Mat(x);
-  
-  int T = Y.n_rows;
-  int K = Y.n_cols;
-  int N = X.n_rows;
-  int P = X.n_cols;
-  
-  if (T != N) {
-    throw std::runtime_error("y and X must have the same number of observations");
-  }
-  
-  if (T <= std::max(p_y, p_f)) {
-    throw std::runtime_error("Sample size must be greater than maximum lag order");
-  }
-  
-  if (n_factors >= P) {
-    throw std::runtime_error("Number of factors must be less than number of X variables");
-  }
-  
-  // Step 1: Extract factors from covariates X using DFM approach
-  auto factor_result = dfm_extract_factors_(X, n_factors);
-  Mat<double> F = factor_result.first;
-  Mat<double> Lambda = factor_result.second;
-  
-  // Step 2: Estimate factor dynamics (if p_f > 0)
-  Mat<double> Phi;
-  Mat<double> F_residuals;
-  Mat<double> Omega;
-  
-  if (p_f > 0) {
-    Phi = var_estimate_(as_doubles_matrix(F), p_f, include_const);
-    auto factor_fitted_resid = var_fitted_resid_(F, Phi, p_f, include_const);
-    F_residuals = factor_fitted_resid.second;
-    Omega = (F_residuals.t() * F_residuals) / (F_residuals.n_rows - Phi.n_rows);
-  } else {
-    // No factor dynamics: use mean as constant
-    if (include_const) {
-      Phi = mean(F, 0).t();
-    } else {
-      Phi = zeros<Mat<double>>(1, n_factors);
-    }
-    F_residuals = zeros<Mat<double>>(T - std::max(p_y, p_f), n_factors);
-    Omega = eye<Mat<double>>(n_factors, n_factors) * 0.01;
-  }
-  
-  // Step 3: Estimate predictive regression: y_t = B(L)y_{t-1} + C(L)F_t + u_t
-  // Reuse FA-VAR augmented VAR function
-  auto var_result = favar_augmented_var_(Y, F, p_y, p_f, include_const);
-  Mat<double> beta = std::get<0>(var_result);
-  Mat<double> C = std::get<1>(var_result);
-  
-  // Step 4: Compute fitted values and residuals
-  auto fitted_resid = favar_fitted_resid_(Y, F, beta, p_y, p_f, include_const);
-  Mat<double> y_fitted = fitted_resid.first;
-  Mat<double> residuals = fitted_resid.second;
-  
-  // Compute residual covariance matrix
-  Mat<double> Sigma = (residuals.t() * residuals) / (residuals.n_rows - beta.n_rows);
-  
-  // Compute AIC
-  int n_params = beta.n_rows * K;  // Total number of parameters in augmented VAR
+  int n_params = N * n_factors +  // Lambda
+                 n_factors * n_factors * p +  // A (in companion form)
+                 n_factors * n_factors +  // Q
+                 N;  // R (diagonal)
   double aic = aic_metric(residuals, n_params);
   
   // Prepare results list
-  writable::list result(16);
+  writable::list result;
+  
+  result.push_back({"factors"_nm = as_doubles_matrix(F)});
+  result.push_back({"loadings"_nm = as_doubles_matrix(Lambda)});
+  result.push_back({"transition"_nm = as_doubles_matrix(A)});
+  result.push_back({"factor_cov"_nm = as_doubles_matrix(Q)});
+  result.push_back({"idiosync_cov"_nm = as_doubles_matrix(R)});
 
-  result[0] = as_doubles_matrix(beta);
-  result[1] = as_doubles_matrix(Phi);
-  result[2] = as_doubles_matrix(Lambda);
-  result[3] = as_doubles_matrix(F);
-  result[4] = as_doubles_matrix(y_fitted);
-  result[5] = as_doubles_matrix(residuals);
-  result[6] = as_doubles_matrix(F_residuals);
-  result[7] = as_doubles_matrix(Sigma);
-  result[8] = as_doubles_matrix(Omega);
-  result[9] = cpp4r::as_sexp(n_factors);
-  result[10] = cpp4r::as_sexp(p_y);
-  result[11] = cpp4r::as_sexp(p_f);
-  result[12] = cpp4r::as_sexp(K);
-  result[13] = cpp4r::as_sexp(P);
-  result[14] = cpp4r::as_sexp(T - std::max(p_y, p_f));
-  result[15] = cpp4r::as_sexp(include_const);
+  result.push_back({"fitted_values"_nm = as_doubles_matrix(X_fitted)});
+  result.push_back({"residuals"_nm = as_doubles_matrix(residuals)});
+  result.push_back({"loglik"_nm = cpp4r::as_sexp(loglik)});
+  result.push_back({"n_factors"_nm = cpp4r::as_sexp(n_factors)});
+  result.push_back({"lag_order"_nm = cpp4r::as_sexp(p)});
 
-  result.names() = {"coefficients", "factor_coefficients", "factor_loadings", "factors",
-                    "fitted_values", "residuals", "factor_residuals", "sigma", "omega",
-                    "n_factors", "lag_order_y", "lag_order_f", "n_variables", "n_covariates",
-                    "n_obs", "include_const"};
+  result.push_back({"n_variables"_nm = cpp4r::as_sexp(N)});
+  result.push_back({"n_obs"_nm = cpp4r::as_sexp(T)});
+  
+  // Compute RMSFE and MAE for first variable (ORIGINAL scale)
+  result.push_back({"rmsfe"_nm = cpp4r::as_sexp(rmsfe(X_raw.col(0), X_fitted.col(0)))});
+  result.push_back({"mae"_nm = cpp4r::as_sexp(mae(X_raw.col(0), X_fitted.col(0)))});
+  result.push_back({"aic"_nm = cpp4r::as_sexp(aic)});
   
   // Add forecasts if requested
   if (forecast_h > 0) {
-    Mat<double> forecasts = favar_forecast_(Y, F, beta, Phi, p_y, p_f, forecast_h, include_const);
+    // For forecasting, construct initial companion state from last p observations of F
+    // F is T x n_factors, we need to create companion state [F_T, F_{T-1}, ..., F_{T-p+1}]
+    Mat<double> F_init_state;
+    if (p > 0) {
+      int state_dim = n_factors * p;
+      F_init_state = zeros<Mat<double>>(1, state_dim);
+      for (int i = 0; i < p; ++i) {
+        int t_idx = T - 1 - i;  // T-1, T-2, ..., T-p
+        if (t_idx >= 0) {
+          F_init_state.cols(i * n_factors, (i + 1) * n_factors - 1) = F.row(t_idx);
+        }
+      }
+    } else {
+      F_init_state = F.row(T - 1);  // Just the last factor for static model
+    }
+    
+    Mat<double> forecasts_std = dfm_forecast_(F_init_state, Lambda, A, n_factors, p, forecast_h);
+    
+    // Unstandardize forecasts to original scale
+    Mat<double> forecasts = dfm_unstandardize_(forecasts_std, means, common_sd);
+    
     result.push_back({"forecasts"_nm = as_doubles_matrix(forecasts)});
     result.push_back({"forecast_horizon"_nm = cpp4r::as_sexp(forecast_h)});
   }
-
-  // Add model metrics
-  result.push_back({"rmsfe"_nm = cpp4r::as_sexp(rmsfe(Y.rows(std::max(p_y, p_f), T-1), y_fitted))});
-  result.push_back({"mae"_nm = cpp4r::as_sexp(mae(Y.rows(std::max(p_y, p_f), T-1), y_fitted))});
-  result.push_back({"aic"_nm = cpp4r::as_sexp(aic)});
   
   return result;
 }
 ```
-
-# References

@@ -2,10 +2,23 @@
 % Please edit documentation in R/cpp4r.R
 \name{dfm_model}
 \alias{dfm_model}
-\title{Main DFM estimation function}
+\title{Dynamic Factor Model (DFM)}
 \usage{
-dfm_model(x, n_factors, p, include_const, max_iter, tol, forecast_h, n_lags)
+dfm_model(x, n_factors, p, max_iter, tol, forecast_h)
+}
+\arguments{
+\item{x}{Matrix of observed variables (T x N)}
+
+\item{n_factors}{Number of latent factors (r < N)}
+
+\item{p}{VAR lag order for factor dynamics (0 for static model)}
+
+\item{max_iter}{Maximum EM iterations}
+
+\item{tol}{Convergence tolerance for log-likelihood}
+
+\item{forecast_h}{Forecast horizon (0 for no forecast)}
 }
 \description{
-Main DFM estimation function
+Estimates a Dynamic Factor Model using PCA initialization and EM algorithm with Kalman filter.
 }

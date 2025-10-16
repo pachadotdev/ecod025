@@ -6,6 +6,15 @@
 \usage{
 var_model(y, p, include_const, forecast_h)
 }
+\arguments{
+\item{y}{Time series vector (T x 1)}
+
+\item{p}{Lag order}
+
+\item{include_const}{Include constant term in VAR}
+
+\item{forecast_h}{Forecast horizon (0 for no forecast)}
+}
 \description{
-Main VAR estimation function that returns everything
+Estimates a VAR model using OLS.
 }

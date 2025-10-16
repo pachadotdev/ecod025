@@ -13,33 +13,25 @@ extern "C" SEXP _ecod025ps1_var_model(SEXP y, SEXP p, SEXP include_const, SEXP f
   END_CPP4R
 }
 // 02-favar.h
-list favar_model(const doubles_matrix<>& y, const doubles_matrix<>& x, int n_factors, int p_y, int p_f, bool include_const, int forecast_h);
-extern "C" SEXP _ecod025ps1_favar_model(SEXP y, SEXP x, SEXP n_factors, SEXP p_y, SEXP p_f, SEXP include_const, SEXP forecast_h) {
+list favar_model(const doubles_matrix<>& y, int n_lags, int n_factors, int p_y, int p_f, bool include_const, int forecast_h);
+extern "C" SEXP _ecod025ps1_favar_model(SEXP y, SEXP n_lags, SEXP n_factors, SEXP p_y, SEXP p_f, SEXP include_const, SEXP forecast_h) {
   BEGIN_CPP4R
-    return cpp4r::as_sexp(favar_model(cpp4r::as_cpp<cpp4r::decay_t<const doubles_matrix<>&>>(y), cpp4r::as_cpp<cpp4r::decay_t<const doubles_matrix<>&>>(x), cpp4r::as_cpp<cpp4r::decay_t<int>>(n_factors), cpp4r::as_cpp<cpp4r::decay_t<int>>(p_y), cpp4r::as_cpp<cpp4r::decay_t<int>>(p_f), cpp4r::as_cpp<cpp4r::decay_t<bool>>(include_const), cpp4r::as_cpp<cpp4r::decay_t<int>>(forecast_h)));
+    return cpp4r::as_sexp(favar_model(cpp4r::as_cpp<cpp4r::decay_t<const doubles_matrix<>&>>(y), cpp4r::as_cpp<cpp4r::decay_t<int>>(n_lags), cpp4r::as_cpp<cpp4r::decay_t<int>>(n_factors), cpp4r::as_cpp<cpp4r::decay_t<int>>(p_y), cpp4r::as_cpp<cpp4r::decay_t<int>>(p_f), cpp4r::as_cpp<cpp4r::decay_t<bool>>(include_const), cpp4r::as_cpp<cpp4r::decay_t<int>>(forecast_h)));
   END_CPP4R
 }
 // 03-dfm.h
-list dfm_model(const doubles_matrix<>& x, int n_factors, int p, bool include_const, int max_iter, double tol, int forecast_h, int n_lags);
-extern "C" SEXP _ecod025ps1_dfm_model(SEXP x, SEXP n_factors, SEXP p, SEXP include_const, SEXP max_iter, SEXP tol, SEXP forecast_h, SEXP n_lags) {
+list dfm_model(const doubles_matrix<>& x, int n_factors, int p, int max_iter, double tol, int forecast_h);
+extern "C" SEXP _ecod025ps1_dfm_model(SEXP x, SEXP n_factors, SEXP p, SEXP max_iter, SEXP tol, SEXP forecast_h) {
   BEGIN_CPP4R
-    return cpp4r::as_sexp(dfm_model(cpp4r::as_cpp<cpp4r::decay_t<const doubles_matrix<>&>>(x), cpp4r::as_cpp<cpp4r::decay_t<int>>(n_factors), cpp4r::as_cpp<cpp4r::decay_t<int>>(p), cpp4r::as_cpp<cpp4r::decay_t<bool>>(include_const), cpp4r::as_cpp<cpp4r::decay_t<int>>(max_iter), cpp4r::as_cpp<cpp4r::decay_t<double>>(tol), cpp4r::as_cpp<cpp4r::decay_t<int>>(forecast_h), cpp4r::as_cpp<cpp4r::decay_t<int>>(n_lags)));
-  END_CPP4R
-}
-// 03-dfm.h
-list dfm_predict_model(const doubles_matrix<>& y, const doubles_matrix<>& x, int n_factors, int p_y, int p_f, bool include_const, int max_iter, double tol, int forecast_h);
-extern "C" SEXP _ecod025ps1_dfm_predict_model(SEXP y, SEXP x, SEXP n_factors, SEXP p_y, SEXP p_f, SEXP include_const, SEXP max_iter, SEXP tol, SEXP forecast_h) {
-  BEGIN_CPP4R
-    return cpp4r::as_sexp(dfm_predict_model(cpp4r::as_cpp<cpp4r::decay_t<const doubles_matrix<>&>>(y), cpp4r::as_cpp<cpp4r::decay_t<const doubles_matrix<>&>>(x), cpp4r::as_cpp<cpp4r::decay_t<int>>(n_factors), cpp4r::as_cpp<cpp4r::decay_t<int>>(p_y), cpp4r::as_cpp<cpp4r::decay_t<int>>(p_f), cpp4r::as_cpp<cpp4r::decay_t<bool>>(include_const), cpp4r::as_cpp<cpp4r::decay_t<int>>(max_iter), cpp4r::as_cpp<cpp4r::decay_t<double>>(tol), cpp4r::as_cpp<cpp4r::decay_t<int>>(forecast_h)));
+    return cpp4r::as_sexp(dfm_model(cpp4r::as_cpp<cpp4r::decay_t<const doubles_matrix<>&>>(x), cpp4r::as_cpp<cpp4r::decay_t<int>>(n_factors), cpp4r::as_cpp<cpp4r::decay_t<int>>(p), cpp4r::as_cpp<cpp4r::decay_t<int>>(max_iter), cpp4r::as_cpp<cpp4r::decay_t<double>>(tol), cpp4r::as_cpp<cpp4r::decay_t<int>>(forecast_h)));
   END_CPP4R
 }
 
 extern "C" {
 static const R_CallMethodDef CallEntries[] = {
-    {"_ecod025ps1_dfm_model",         (DL_FUNC) &_ecod025ps1_dfm_model,         8},
-    {"_ecod025ps1_dfm_predict_model", (DL_FUNC) &_ecod025ps1_dfm_predict_model, 9},
-    {"_ecod025ps1_favar_model",       (DL_FUNC) &_ecod025ps1_favar_model,       7},
-    {"_ecod025ps1_var_model",         (DL_FUNC) &_ecod025ps1_var_model,         4},
+    {"_ecod025ps1_dfm_model",   (DL_FUNC) &_ecod025ps1_dfm_model,   6},
+    {"_ecod025ps1_favar_model", (DL_FUNC) &_ecod025ps1_favar_model, 7},
+    {"_ecod025ps1_var_model",   (DL_FUNC) &_ecod025ps1_var_model,   4},
     {NULL, NULL, 0}
 };
 }

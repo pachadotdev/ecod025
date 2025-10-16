@@ -1,46 +1,22 @@
-/*
-==============================================
-Root Mean Squared Forecast Error (RMSFE)
-===========================================
-*/
+/* Root Mean Squared Forecast Error (RMSFE) */
 
 double rmsfe(const Mat<double>& actual, const Mat<double>& forecast) {
-  // if (actual.n_rows != forecast.n_rows || actual.n_cols != forecast.n_cols) {
-  //   throw std::runtime_error("Actual and forecast matrices must have the same dimensions");
-  // }
-  
   Mat<double> errors = actual - forecast;
   Mat<double> squared_errors = square(errors);
-  Mat<double> mean_squared_errors = mean(squared_errors, 0); // Mean across rows for each variable
-  Mat<double> rmsfe_values = sqrt(mean_squared_errors);
   
-  // Return average RMSFE across all variables
-  return as_scalar(mean(rmsfe_values));
+  double mse = accu(squared_errors) / squared_errors.n_elem;
+  
+  return sqrt(mse);
 }
 
-/*
-==============================================
-Mean Absolute Error (MAE)
-==============================================
-*/
+/* Mean Absolute Error (MAE) */
 
-double mae(const Mat<double>& actual, const Mat<double>& forecast) {
-  // if (actual.n_rows != forecast.n_rows || actual.n_cols != forecast.n_cols) {
-  //   throw std::runtime_error("Actual and forecast matrices must have the same dimensions");
-  // }
-  
+double mae(const Mat<double>& actual, const Mat<double>& forecast) {  
   Mat<double> errors = abs(actual - forecast);
-  Mat<double> mean_absolute_errors = mean(errors, 0); // Mean across rows for each variable
-  
-  // Return average MAE across all variables
-  return as_scalar(mean(mean_absolute_errors));
+  return accu(errors) / errors.n_elem;
 }
 
-/*
-==============================================
-Akaike Information Criterion (AIC)
-==============================================
-*/
+/* Akaike Information Criterion (AIC) */
 
 double aic_metric(const Mat<double>& residuals, int n_params) {
   int T = residuals.n_rows;
