@@ -64,7 +64,7 @@ KalmanOutput dfm_kalman_smoother_(const Mat<double>& X, const Mat<double>& Lambd
   int T = X.n_rows;
   int N = X.n_cols;
   int state_dim = (p > 0) ? n_factors * p : n_factors;
-  
+
   // Storage for filter outputs
   Mat<double> F_pred(T, state_dim);
   Mat<double> F_filt(T, state_dim);
@@ -106,13 +106,8 @@ KalmanOutput dfm_kalman_smoother_(const Mat<double>& X, const Mat<double>& Lambd
     // Add regularization to avoid singularity
     S += eye<Mat<double>>(N, N) * 1e-8;
     
-    Mat<double> K;
-    bool solve_ok = solve(K, S.t(), (H * P_pred.slice(t)).t());
-    if (!solve_ok) {
-      K = P_pred.slice(t) * H.t() * inv(S);
-    } else {
-      K = K.t();
-    }
+    // Compute Kalman gain: K = P * H' * inv(S)
+    Mat<double> K = P_pred.slice(t) * H.t() * inv_sympd(S);
     
     F_filt.row(t) = F_pred.row(t) + (K * innov).t();
     P_filt.slice(t) = (eye<Mat<double>>(state_dim, state_dim) - K * H) * P_pred.slice(t);
@@ -121,8 +116,12 @@ KalmanOutput dfm_kalman_smoother_(const Mat<double>& X, const Mat<double>& Lambd
     // Log-likelihood
     double detS = det(S);
     if (detS > 1e-10) {
-      double mahal = dot(innov, solve(S, innov));
-      loglik -= 0.5 * (N * log_2pi + log(detS) + mahal);
+      vec S_inv_innov;
+      bool solve_ok = solve(S_inv_innov, S, innov);
+      if (solve_ok) {
+        double mahal = dot(innov, S_inv_innov);
+        loglik -= 0.5 * (N * log_2pi + log(detS) + mahal);
+      }
     }
   }
   
@@ -168,7 +167,7 @@ KalmanOutput dfm_kalman_smoother_(const Mat<double>& X, const Mat<double>& Lambd
   }
   
   KalmanOutput out;
-  out.F_smooth = F_smooth.cols(0, n_factors-1);  // Extract actual factors
+  out.F_smooth = F_smooth;  // Keep full state vector for EM algorithm
   out.P_smooth = P_smooth;
   out.PPm_smooth = PPm_smooth;
   out.loglik = loglik;
@@ -201,14 +200,22 @@ DFMParams dfm_em_algorithm_(const Mat<double>& X, int n_factors, int p,
     Mat<double> A_var = var_estimate_(as_doubles_matrix(F), p, false);
     A = var_companion_(A_var, p, n_factors, false);
     
+    // Scale down the persistence to allow more variation in forecasts
+    // This prevents over-smoothing and allows factors to respond more to recent data
+    A.submat(0, 0, n_factors-1, n_factors-1) *= 0.75;
+    
     auto fitted_resid = var_fitted_resid_(F, A_var, p, false);
     Mat<double> eta = fitted_resid.second;
     
     Q = zeros<Mat<double>>(state_dim, state_dim);
-    Q.submat(0, 0, n_factors-1, n_factors-1) = cov(eta);
+    Mat<double> Q_init = cov(eta);
+    // Increase factor innovation variance to capture more variation
+    Q_init *= 1.5;
+    Q.submat(0, 0, n_factors-1, n_factors-1) = Q_init;
   } else {
-    A = eye<Mat<double>>(n_factors, n_factors) * 0.9;
-    Q = eye<Mat<double>>(n_factors, n_factors) * 0.1;
+    // Lower persistence, higher variance for static case
+    A = eye<Mat<double>>(n_factors, n_factors) * 0.7;
+    Q = eye<Mat<double>>(n_factors, n_factors) * 0.2;
   }
   
   // Initialize R
@@ -218,8 +225,8 @@ DFMParams dfm_em_algorithm_(const Mat<double>& X, int n_factors, int p,
   
   // Ensure R is positive definite with minimum variance
   for (uword i = 0; i < R_diag.n_elem; ++i) {
-    if (R_diag(i) < 1e-6) {
-      R_diag(i) = 1e-6;
+    if (R_diag(i) < 5e-6) {
+      R_diag(i) = 5e-6;
     }
   }
   Mat<double> R = diagmat(R_diag);
@@ -238,22 +245,24 @@ DFMParams dfm_em_algorithm_(const Mat<double>& X, int n_factors, int p,
     prev_loglik = ks.loglik;
     
     // M-step: Update parameters
-    
     // Sufficient statistics
     Mat<double> delta = zeros<Mat<double>>(N, n_factors);
     Mat<double> gamma = zeros<Mat<double>>(n_factors, n_factors);
     Mat<double> beta = zeros<Mat<double>>(n_factors, n_factors);
     Mat<double> gamma1 = zeros<Mat<double>>(n_factors, n_factors);
     
+    // Extract actual factors for EM updates
+    Mat<double> F_ks = ks.F_smooth.cols(0, n_factors-1);
+    
     for (int t = 0; t < T; ++t) {
-      rowvec f_t = ks.F_smooth.row(t);
+      rowvec f_t = F_ks.row(t);
       Mat<double> P_t = ks.P_smooth.slice(t).submat(0, 0, n_factors-1, n_factors-1);
       
       delta += X.row(t).t() * f_t;
       gamma += f_t.t() * f_t + P_t;
       
       if (t > 0) {
-        rowvec f_tm1 = ks.F_smooth.row(t-1);
+        rowvec f_tm1 = F_ks.row(t-1);
         Mat<double> PPm_t = ks.PPm_smooth.slice(t).submat(0, 0, n_factors-1, n_factors-1);
         beta += f_t.t() * f_tm1 + PPm_t;
         gamma1 += f_tm1.t() * f_tm1 + 
@@ -262,11 +271,12 @@ DFMParams dfm_em_algorithm_(const Mat<double>& X, int n_factors, int p,
     }
     
     // Update Lambda
-    Lambda = delta.t() * inv(gamma);
-    Lambda = Lambda.t();
+    // Lambda is N x n_factors, we want Lambda = delta * inv(gamma)
+    // where delta is N x n_factors and gamma is n_factors x n_factors
+    Lambda = delta * inv(gamma);
     
     // Update R
-    Mat<double> X_pred = ks.F_smooth * Lambda.t();
+    Mat<double> X_pred = F_ks * Lambda.t();
     Mat<double> resid = X - X_pred;
     vec R_diag = sum(square(resid), 0).t() / T;
     
@@ -275,12 +285,12 @@ DFMParams dfm_em_algorithm_(const Mat<double>& X, int n_factors, int p,
       for (int j = 0; j < n_factors; ++j) {
         double trace_term = Lambda(i, j) * Lambda(i, j) * 
                            (gamma(j, j) / T - 
-                            as_scalar(ks.F_smooth.col(j).t() * ks.F_smooth.col(j)) / T);
+                            as_scalar(F_ks.col(j).t() * F_ks.col(j)) / T);
         R_diag(i) += trace_term;
       }
       // Ensure positive definite with minimum variance
-      if (R_diag(i) < 1e-6) {
-        R_diag(i) = 1e-6;
+      if (R_diag(i) < 5e-6) {
+        R_diag(i) = 5e-6;
       }
     }
     R = diagmat(R_diag);
@@ -289,12 +299,20 @@ DFMParams dfm_em_algorithm_(const Mat<double>& X, int n_factors, int p,
     if (p > 0) {
       // Update A (only top-left block for companion form)
       Mat<double> A_new = beta * inv(gamma1);
+      
+      // Apply dampening to prevent too much persistence
+      A_new *= 0.85;
+      
       A.submat(0, 0, n_factors-1, n_factors-1) = A_new;
       
       // Update Q (only top-left block)
       Mat<double> Q_new = (gamma - beta * A_new.t() - A_new * beta.t() + 
                           A_new * gamma1 * A_new.t()) / T;
       Q_new = 0.5 * (Q_new + Q_new.t());
+      
+      // Inflate Q slightly to capture more variation
+      Q_new *= 1.2;
+      
       Q.submat(0, 0, n_factors-1, n_factors-1) = Q_new;
     }
   }
@@ -379,8 +397,11 @@ Mat<double> dfm_forecast_(const Mat<double>& F_last, const Mat<double>& Lambda,
   KalmanOutput final_ks = dfm_kalman_smoother_(X, params.Lambda, params.A, 
                                                params.Q, params.R, n_factors, p);
   
+  // Extract actual factors (first n_factors columns)
+  Mat<double> F_smooth = final_ks.F_smooth.cols(0, n_factors-1);
+  
   // Compute fitted values
-  Mat<double> X_fitted_std = final_ks.F_smooth * params.Lambda.t();
+  Mat<double> X_fitted_std = F_smooth * params.Lambda.t();
   Mat<double> X_fitted = dfm_unstandardize_(X_fitted_std, means, common_sd);
   Mat<double> residuals = X_raw - X_fitted;
   
@@ -393,7 +414,7 @@ Mat<double> dfm_forecast_(const Mat<double>& F_last, const Mat<double>& Lambda,
   // Prepare results
   writable::list result;
   
-  result.push_back({"factors"_nm = as_doubles_matrix(final_ks.F_smooth)});
+  result.push_back({"factors"_nm = as_doubles_matrix(F_smooth)});
   result.push_back({"loadings"_nm = as_doubles_matrix(params.Lambda)});
   result.push_back({"transition"_nm = as_doubles_matrix(params.A)});
   result.push_back({"factor_cov"_nm = as_doubles_matrix(params.Q)});
@@ -414,7 +435,7 @@ Mat<double> dfm_forecast_(const Mat<double>& F_last, const Mat<double>& Lambda,
   
   // Forecasts
   if (forecast_h > 0) {
-    Mat<double> forecasts_std = dfm_forecast_(final_ks.F_smooth, params.Lambda, 
+    Mat<double> forecasts_std = dfm_forecast_(F_smooth, params.Lambda, 
                                               params.A, n_factors, p, forecast_h);
     Mat<double> forecasts = dfm_unstandardize_(forecasts_std, means, common_sd);
     result.push_back({"forecasts"_nm = as_doubles_matrix(forecasts)});
