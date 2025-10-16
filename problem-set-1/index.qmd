@@ -50,6 +50,8 @@ if (!require("ecod025ps1") && run_models) {
   if (!require("pak")) {
     install.packages("pak", repos = repos)
   }
+  pak::pkg_install("pachadotdev/cpp4r")
+  pak::pkg_install("pachadotdev/armadillo4r")
   pak::pkg_install("pachadotdev/ecod025/ecod025ps1")
 }
 
