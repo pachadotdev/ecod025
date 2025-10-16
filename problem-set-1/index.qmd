@@ -51,9 +51,9 @@ if (!require("ecod025ps1") && run_models) {
         install.packages("pak", repos = repository)
     }
     pak::pkg_install("pachadotdev/ecod025/ecod025ps1")
-
-    if (!require("dynlm")) install.packages("dynlm")
 }
+
+if (!require("dynlm") && run_models) install.packages("dynlm")
 
 if (run_models) {
     library(ecod025ps1)
