@@ -48,14 +48,14 @@ load pre-computed results.
 
 ```{r runmodels}
 run_models <- T
-reinstall_ecod025ps1 <- T
+reinstall_ecod025ps1 <- F
 repos <- "https://cran.rstudio.com"
 ```
 
 The functions were made available in the R package `ecod025ps1` which can be installed from this same repository:
 
 ```{r install, eval = TRUE, warning = FALSE, message = FALSE, echo = TRUE}
-if (FALSE) {
+if (run_models) {
   # devtools::install("../ecod025ps1/")
   if (reinstall_ecod025ps1) {
     if (require("ecod025ps1")) remove.packages("ecod025ps1")
@@ -115,6 +115,27 @@ library(rlang)
 library(purrr)
 library(ggplot2)
 library(tintin)
+```
+
+Additional package for the Bayesian VAR model:
+
+```{r rpkgs2, warning = FALSE, message = FALSE, echo = TRUE}
+if (!require("cmdstanr")) {
+  install.packages("cmdstanr",
+    repos = c("https://mc-stan.org/r-packages/", getOption("repos")))
+}
+
+if (!require("bayesplot")) {
+  install.packages("bayesplot", repos = repos)
+}
+
+library(cmdstanr)
+library(bayesplot)
+
+# do we need to install Stan?
+if (is.null(cmdstanr::cmdstan_path())) {
+  install_cmdstan()
+}
 ```
 
 # Models
@@ -1086,7 +1107,249 @@ ggplot(fit_predictions4) +
   geom_hline(yintercept = 0, color = "red", linetype = "dashed")
 ```
 
+# Bonus: Bayesian VAR
+
+```{r bonus, eval = run_models, warning = FALSE, message = FALSE, echo = TRUE}
+prepare_stan_data <- function(cpilfesl_data, gdpdef_data, gdpc1_data, 
+                               p = 4, h = 12, 
+                               lambda = 0.2, tau = 0.5) {
+  
+  # Merge data ensuring common dates
+  data_merged <- cpilfesl_data %>%
+    select(date, cpi_inflation = inflation) %>%
+    inner_join(
+      gdpdef_data %>% select(date, gdp_deflator = inflation),
+      by = "date"
+    ) %>%
+    inner_join(
+      gdpc1_data %>% select(date, gdp_growth = gdpgrowth),
+      by = "date"
+    ) %>%
+    arrange(date) %>%
+    na.omit()
+  
+  # Create matrix of variables
+  Y <- as.matrix(data_merged[, c("cpi_inflation", "gdp_deflator", "gdp_growth")])
+  
+  # Standardize variables (helps with convergence)
+  Y_mean <- colMeans(Y)
+  Y_sd <- apply(Y, 2, sd)
+  Y_std <- scale(Y)
+  
+  # Prepare Stan data
+  stan_data <- list(
+    T = nrow(Y_std),
+    K = ncol(Y_std),
+    p = p,
+    h = h,
+    Y = Y_std,
+    lambda = lambda,
+    tau = tau,
+    epsilon = 1e-6
+  )
+  
+  # Return data with scaling info for back-transformation
+  return(list(
+    stan_data = stan_data,
+    Y_mean = Y_mean,
+    Y_sd = Y_sd,
+    dates = data_merged$date,
+    Y_original = Y
+  ))
+}
+
+fit_bayesian_var <- function(data_list, 
+                             stan_file = "minnesota-litterman-var.stan",
+                             chains = 4,
+                             iter_warmup = 1000,
+                             iter_sampling = 2000,
+                             parallel_chains = 4) {
+  
+  # Compile Stan model
+  model <- cmdstan_model(stan_file)
+  
+  # Fit the model
+  fit <- model$sample(
+    data = data_list$stan_data,
+    chains = chains,
+    parallel_chains = parallel_chains,
+    iter_warmup = iter_warmup,
+    iter_sampling = iter_sampling,
+    refresh = 500,
+    show_messages = TRUE
+  )
+  
+  return(fit)
+}
+
+extract_forecasts <- function(fit, data_list) {
+  
+  # Extract posterior draws using cmdstanr methods
+  forecast_mean_draws <- fit$draws(variables = "Y_forecast_mean", format = "matrix")
+  forecast_draws <- fit$draws(variables = "Y_forecast", format = "matrix")
+  
+  # Get dimensions
+  h <- data_list$stan_data$h
+  K <- data_list$stan_data$K
+  
+  # Compute summary statistics across posterior samples
+  # For each forecast horizon and variable, get median and quantiles
+  forecast_mean <- matrix(NA, nrow = h, ncol = K)
+  forecast_lower <- matrix(NA, nrow = h, ncol = K)
+  forecast_upper <- matrix(NA, nrow = h, ncol = K)
+  
+  for (i in 1:h) {
+    for (k in 1:K) {
+      # Column name pattern: Y_forecast_mean[horizon,variable]
+      col_name_mean <- paste0("Y_forecast_mean[", i, ",", k, "]")
+      col_name_forecast <- paste0("Y_forecast[", i, ",", k, "]")
+      
+      forecast_mean[i, k] <- median(forecast_mean_draws[, col_name_mean])
+      forecast_lower[i, k] <- quantile(forecast_draws[, col_name_forecast], probs = 0.05)
+      forecast_upper[i, k] <- quantile(forecast_draws[, col_name_forecast], probs = 0.95)
+    }
+  }
+  
+  # Back-transform from standardized scale
+  for (k in 1:K) {
+    forecast_mean[, k] <- forecast_mean[, k] * data_list$Y_sd[k] + data_list$Y_mean[k]
+    forecast_lower[, k] <- forecast_lower[, k] * data_list$Y_sd[k] + data_list$Y_mean[k]
+    forecast_upper[, k] <- forecast_upper[, k] * data_list$Y_sd[k] + data_list$Y_mean[k]
+  }
+  
+  # Create forecast dates
+  last_date <- max(data_list$dates)
+  forecast_dates <- last_date + years(1:h)
+  
+  # Create output data frame
+  forecasts <- tibble(
+    date = rep(forecast_dates, K),
+    variable = rep(c("CPILFESL", "GDPDEF", "GDPGROWTH"), each = h),
+    forecast = as.vector(forecast_mean),
+    lower_90 = as.vector(forecast_lower),
+    upper_90 = as.vector(forecast_upper)
+  )
+  
+  return(forecasts)
+}
+
+stan_diagnostics <- function(fit, data_list) {
+  # Get dimensions
+  T_eff <- data_list$stan_data$T - data_list$stan_data$p
+  K <- data_list$stan_data$K
+  
+  # Extract fitted values - loop through each element
+  fitted_matrix <- matrix(NA, nrow = T_eff, ncol = K)
+  
+  for (t in 1:T_eff) {
+    for (k in 1:K) {
+      # Column name pattern: fitted[time,variable]
+      col_name <- paste0("fitted[", t, ",", k, "]")
+      fitted_draws <- fit$draws(variables = col_name, format = "matrix")
+      fitted_matrix[t, k] <- median(fitted_draws[, col_name])
+    }
+  }
+  
+  # Back-transform from standardized scale
+  for (k in 1:K) {
+    fitted_matrix[, k] <- fitted_matrix[, k] * data_list$Y_sd[k] + data_list$Y_mean[k]
+  }
+  
+  # Get actual values (after removing lags)
+  p <- data_list$stan_data$p
+  Y_actual <- data_list$Y_original[(p+1):nrow(data_list$Y_original), ]
+  
+  # Compute RMSFE and MAE for each variable
+  metrics <- data.frame(
+    variable = c("CPILFESL", "GDPDEF", "GDPGROWTH"),
+    RMSFE = numeric(3),
+    MAE = numeric(3)
+  )
+  
+  for (k in 1:K) {
+    residuals <- Y_actual[, k] - fitted_matrix[, k]
+    metrics$RMSFE[k] <- sqrt(mean(residuals^2))
+    metrics$MAE[k] <- mean(abs(residuals))
+  }
+  
+  return(metrics)
+}
+```
+
+```{r bonus2, warning = FALSE, message = FALSE, echo = TRUE, eval = run_models}
+data_list <- prepare_stan_data(
+    cpilfesl_mm_subset,
+    gdpdef_mm_subset,
+    gdpc1_yy_subset,
+    p = 4,      # Number of lags
+    h = 12,     # Forecast horizon
+    lambda = 0.2,  # Minnesota-Litterman prior tightness
+    tau = 0.5      # Relative tightness for other variables
+  )
+  
+bayesian_fit <- fit_bayesian_var(data_list)
+ 
+bayesian_fit$diagnostic_summary()
+
+bayesian_forecasts <- extract_forecasts(bayesian_fit, data_list)
+
+bayesian_forecasts <- bayesian_forecasts %>%
+  inner_join(
+    inflation %>%
+      filter(series %in% c("CPILFESL", "GDPDEF")) %>%
+      filter(year(date) > max(year(date) - h)) %>%
+      select(date, observed = value, variable = series) %>%
+      bind_rows(
+        gdpc1_yy %>%
+          filter(year(date) > max(year(date) - h)) %>%
+          select(date, observed = gdpgrowth) %>%
+          mutate(variable = "GDPGROWTH")
+      ) %>%
+      arrange(date, variable),
+    by = c("date", "variable")
+  )
+
+stan_diagnostics(bayesian_fit, data_list)
+
+clrs <- tintin_pal()(2)
+
+ggplot(bayesian_forecasts, aes(x = date)) +
+  geom_ribbon(aes(ymin = lower_90, ymax = upper_90), 
+              alpha = 0.15, fill = clrs[2]) +
+  geom_line(aes(y = forecast), color = clrs[2], linewidth = 1) +
+  geom_line(aes(y = observed), color = clrs[1], linewidth = 1) +
+  facet_wrap(~variable, ncol = 1, scales = "free_y") +
+  labs(title = "Bayesian VAR Forecasts (90% Credible Intervals)",
+  subtitle = "Red = observed; Blue = forecast",
+         x = "Date", y = "Value (%)") +
+    theme_minimal(base_size = 10) +
+    geom_hline(yintercept = 0, color = "red", linetype = "dashed", alpha = 0.5)
+```
+
 # Model Comparison
 
 # C++ codes
 
+## Model metrics
+
+```{r cpp1}
+cat(readLines("https://raw.githubusercontent.com/pachadotdev/ecod025/refs/heads/code-for-ps1/src/00-model-metrics.h"), sep = "\n")
+```
+
+## VAR model
+
+```{r cpp2}
+cat(readLines("https://raw.githubusercontent.com/pachadotdev/ecod025/refs/heads/code-for-ps1/src/01-var.h"), sep = "\n")
+```
+
+## FA-VAR model
+
+```{r cpp3}
+cat(readLines("https://raw.githubusercontent.com/pachadotdev/ecod025/refs/heads/code-for-ps1/src/02-favar.h"), sep = "\n")
+```
+
+## DFM model
+
+```{r cpp4}
+cat(readLines("https://raw.githubusercontent.com/pachadotdev/ecod025/refs/heads/code-for-ps1/src/03-dfm.h"), sep = "\n")
+```

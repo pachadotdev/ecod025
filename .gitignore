@@ -2,3 +2,7 @@
 .Rhistory
 .RData
 .Ruserdata
+*.o
+*.so
+*.dll
+problem-set-1/minnesota-litterman-var
