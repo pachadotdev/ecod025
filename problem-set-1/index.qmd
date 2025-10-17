@@ -1,6 +1,6 @@
 ---
 title: 'Problem Set 1'
-author: 'Mauricio Vargas Sepulveda'
+author: 'Mauricio Vargas Sepulveda; Orlaith Onoh; Budara Wickramasinghe'
 institution: 'University of Surrey'
 year: 2025
 format:
@@ -297,6 +297,8 @@ $$
 
 # Data
 
+The data analysis begins with multiple measures of inflation and real GDP growth obtained from FRED. The inflation indicators include headline CPI, core CPI (excluding food and energy), food prices, energy prices, the GDP deflator, and the University of Michigan’s survey-based inflation expectations. The plotted series reveal distinct dynamics: energy inflation is highly volatile, largely driven by geopolitical shocks, while core inflation (CPILFESL) and the GDP deflator (GDPDEF) exhibit smoother, more persistent trends that better capture underlying price pressures. The Michigan expectations series serves as a forward-looking indicator of inflation sentiment. Real GDP growth displays a pronounced cyclical pattern, with notable contractions during major downturns such as the 2008 financial crisis and the 2020 pandemic. These observations motivate the use of CPILFESL and GDPDEF as the primary inflation measures, and real GDP growth as the output indicator, for the subsequent forecasting models.
+
 Get the different series used to measure inflation according to
 [FED](https://files.stlouisfed.org/files/htdocs/pageone-economics/uploads/Lessons/DataPracticeFRED_Measures_of_Inflation.pdf):
 
@@ -473,6 +475,8 @@ GDP is also affected by external factors (e.g., the $X - M$ component of GDP) bu
 GDP growth.
 
 # Estimate a VAR model
+
+The Vector Autoregression (VAR) model was estimated to capture the interdependence between inflation and output growth. Optimal lag lengths were selected using the Akaike Information Criterion (AIC), resulting in four lags for core inflation and GDP growth, and six lags for the GDP deflator. The resulting forecasts show that the VAR effectively tracks short-term fluctuations but struggles to capture large structural shocks, particularly around the pandemic period. Forecast errors are more pronounced during volatile episodes, reflecting the VAR’s limited ability to incorporate external influences or latent factors. Nonetheless, it provides a useful benchmark for short-horizon predictions and serves as the foundation for more advanced models.
 
 The goal is to choose the lag length based on information criteria.
 
@@ -743,6 +747,8 @@ fit_predictions2 %>%
 
 # Estimate a FA-VAR model
 
+The Factor Augmented VAR model is an extension of the standard VAR model seen above. It incorporates latent common factors using the PCA method, allowing one to capture the dynamic relationships among the variables used in the analysis. The FA-VAR predictions can be seen in the forecast above. For the variables CPILFESL, GDPDEF, GDPGROWTH the FA-VAR captures the trends somewhat accurately up until there is a prominent spike. The FA-VAR slightly underestimates any structural shocks, suggesting that the latent factors are not fully capturing their magnitudes. The FA-VAR acts quite similarly to the VAR model estimated. It provides a good benchmark for short-horizon predictions, and it is important to note that it has lower forecast errors than the basic VAR, suggesting that adding latent factors enhances predictive performance. 
+
 The FA-VAR model follows a pure time series approach: it creates an information set $X_t$ from the target variable
 and its lags, extracts latent factors via PCA, and augments a VAR with these factors.
 
@@ -920,6 +926,8 @@ ggplot(fit_predictions3) +
 ```
 
 # Estimate a DFM model
+
+The Dynamic Factor Model (DFM) was estimated using a state-space representation with PCA initialization and the Kalman filter for forecasting. By extracting a common latent factor from inflation-related series such as core CPI and food prices, the DFM isolates shared movements that represent underlying macroeconomic pressures. The resulting forecasts align closely with observed inflation dynamics but exhibit mild lagging behavior during sharp turning points, indicating a slower adjustment to sudden shocks. The DFM’s strong in-sample fit demonstrates its ability to summarize complex information into a few latent components, offering valuable structural insights into inflation dynamics even if short-term forecast precision remains modest.
 
 The DFM uses a state-space representation with PCA initialization and Kalman filter for parameter estimation.
 
@@ -1112,6 +1120,8 @@ ggplot(fit_predictions4) +
 ```
 
 # Bonus: Bayesian VAR
+
+The Bayesian VAR model was implemented using the Minnesota-Litterman prior to produce 12-step ahead forecasts for inflation and GDP growth (forecast horizon h = 12). This approach introduces prior beliefs about the size and direction of parameters, effectively shrinking estimates toward more plausible values. As a result, it mitigates issues of overfitting and improves stability in small samples. The forecasts are presented with 90% credible intervals, providing a clear visualization of uncertainty around the central projections. Compared to the traditional VAR, the Bayesian VAR produces smoother and more consistent projections, especially during volatile periods such as the post-pandemic recovery. The credible intervals capture most of the observed variation, demonstrating the model’s ability to account for forecast risk. Overall, the Bayesian VAR delivers the most balanced and policy-relevant predictions among all models, offering both precision and transparency by quantifying uncertainty which is essential for the FED’s decision-making framework.
 
 ```{r bonus, eval = run_models, warning = FALSE, message = FALSE, echo = TRUE}
 prepare_stan_data <- function(cpilfesl_data, gdpdef_data, gdpc1_data, 
@@ -1342,12 +1352,20 @@ ggplot(bayesian_forecasts, aes(x = date)) +
 
 # Model Comparison
 
+## Forecast Evaluation
+
+The accuracy of the forecasts was evaluated using two standard metrics: the Root Mean Squared Forecast Error (RMSFE) and the Mean Absolute Error (MAE). These measures were computed for both in-sample and out-of-sample periods to assess how well each model predicted inflation and GDP growth. The results show that the Factor-Augmented VAR (FA-VAR) consistently achieves lower forecast errors than the basic VAR, indicating that including latent factors extracted from broader information sets enhances predictive performance. The Dynamic Factor Model (DFM) provides an excellent in-sample fit, effectively capturing the common underlying trends across inflation indicators, but its out-of-sample performance weakens slightly due to slower adjustment to abrupt changes. In contrast, the Bayesian VAR delivers the most stable and reliable forecasts overall, with smaller RMSFE and MAE values across both inflation and growth series. This superior performance reflects the Bayesian model’s ability to incorporate prior information and mitigate overfitting, resulting in smoother forecasts and more realistic uncertainty quantification. Overall, the evaluation confirms that models combining richer informational content or Bayesian regularization produce more accurate and policy-relevant forecasts for the Federal Reserve.
+
+## Evaluation of the Models
+
+The forecast comparison highlights that models incorporating richer information and prior structure provide more reliable guidance for monetary policy than a simple VAR. While the standard VAR captures short-term dynamics in inflation and output, it performs poorly during periods of structural change such as the COVID-19 shock. The Factor-Augmented VAR (FA-VAR) improves predictive accuracy by summarizing broader macroeconomic signals through latent factors, offering smoother and more stable forecasts for core inflation. The Dynamic Factor Model (DFM) effectively identifies common cyclical components across indicators but tends to lag during abrupt regime shifts. In contrast, the Bayesian VAR demonstrates the most robust and policy-relevant performance: it mitigates overfitting, stabilizes forecasts in volatile periods, and provides credible intervals that quantify uncertainty, an essential feature for risk-based decision-making. Overall, the Bayesian VAR emerges as the preferred tool for the Federal Reserve’s forecasting system, as it balances statistical precision with interpretability and supports transparent, data-driven communication of inflation and growth risks.
+
 # C++ codes
 
 ## Model metrics
 
 ```{r cpp1}
-cat(readLines("https://raw.githubusercontent.com/pachadotdev/ecod025/refs/heads/code-for-ps1/src/00-model-metrics.h"), sep = "\n")
+cat(readLines("../ecod025ps1/src/00-model-metrics.h"), sep = "\n")
 ```
 
 ## VAR model

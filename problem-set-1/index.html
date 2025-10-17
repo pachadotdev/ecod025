@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="author" content="Mauricio Vargas Sepulveda">
+<meta name="author" content="Mauricio Vargas Sepulveda; Orlaith Onoh; Budara Wickramasinghe">
 
 <title>Problem Set 1</title>
 <style>
@@ -159,7 +159,11 @@ window.Quarto = {
   <li><a href="#estimate-a-fa-var-model" id="toc-estimate-a-fa-var-model" class="nav-link" data-scroll-target="#estimate-a-fa-var-model">Estimate a FA-VAR model</a></li>
   <li><a href="#estimate-a-dfm-model" id="toc-estimate-a-dfm-model" class="nav-link" data-scroll-target="#estimate-a-dfm-model">Estimate a DFM model</a></li>
   <li><a href="#bonus-bayesian-var" id="toc-bonus-bayesian-var" class="nav-link" data-scroll-target="#bonus-bayesian-var">Bonus: Bayesian VAR</a></li>
-  <li><a href="#model-comparison" id="toc-model-comparison" class="nav-link" data-scroll-target="#model-comparison">Model Comparison</a></li>
+  <li><a href="#model-comparison" id="toc-model-comparison" class="nav-link" data-scroll-target="#model-comparison">Model Comparison</a>
+  <ul class="collapse">
+  <li><a href="#forecast-evaluation" id="toc-forecast-evaluation" class="nav-link" data-scroll-target="#forecast-evaluation">Forecast Evaluation</a></li>
+  <li><a href="#evaluation-of-the-models" id="toc-evaluation-of-the-models" class="nav-link" data-scroll-target="#evaluation-of-the-models">Evaluation of the Models</a></li>
+  </ul></li>
   <li><a href="#c-codes" id="toc-c-codes" class="nav-link" data-scroll-target="#c-codes">C++ codes</a>
   <ul class="collapse">
   <li><a href="#model-metrics" id="toc-model-metrics" class="nav-link" data-scroll-target="#model-metrics">Model metrics</a></li>
@@ -187,7 +191,7 @@ window.Quarto = {
     <div>
     <div class="quarto-title-meta-heading">Author</div>
     <div class="quarto-title-meta-contents">
-             <p>Mauricio Vargas Sepulveda </p>
+             <p>Mauricio Vargas Sepulveda; Orlaith Onoh; Budara Wickramasinghe </p>
           </div>
   </div>
     
@@ -428,6 +432,7 @@ C(L) X_t = HV_t + e_t
 </section>
 <section id="data" class="level1">
 <h1>Data</h1>
+<p>The data analysis begins with multiple measures of inflation and real GDP growth obtained from FRED. The inflation indicators include headline CPI, core CPI (excluding food and energy), food prices, energy prices, the GDP deflator, and the University of Michigan’s survey-based inflation expectations. The plotted series reveal distinct dynamics: energy inflation is highly volatile, largely driven by geopolitical shocks, while core inflation (CPILFESL) and the GDP deflator (GDPDEF) exhibit smoother, more persistent trends that better capture underlying price pressures. The Michigan expectations series serves as a forward-looking indicator of inflation sentiment. Real GDP growth displays a pronounced cyclical pattern, with notable contractions during major downturns such as the 2008 financial crisis and the 2020 pandemic. These observations motivate the use of CPILFESL and GDPDEF as the primary inflation measures, and real GDP growth as the output indicator, for the subsequent forecasting models.</p>
 <p>Get the different series used to measure inflation according to <a href="https://files.stlouisfed.org/files/htdocs/pageone-economics/uploads/Lessons/DataPracticeFRED_Measures_of_Inflation.pdf">FED</a>:</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">try</span>(<span class="fu">dir.create</span>(<span class="st">"data"</span>), <span class="at">silent =</span> <span class="cn">TRUE</span>)</span>
@@ -592,6 +597,7 @@ C(L) X_t = HV_t + e_t
 </section>
 <section id="estimate-a-var-model" class="level1">
 <h1>Estimate a VAR model</h1>
+<p>The Vector Autoregression (VAR) model was estimated to capture the interdependence between inflation and output growth. Optimal lag lengths were selected using the Akaike Information Criterion (AIC), resulting in four lags for core inflation and GDP growth, and six lags for the GDP deflator. The resulting forecasts show that the VAR effectively tracks short-term fluctuations but struggles to capture large structural shocks, particularly around the pandemic period. Forecast errors are more pronounced during volatile episodes, reflecting the VAR’s limited ability to incorporate external influences or latent factors. Nonetheless, it provides a useful benchmark for short-horizon predictions and serves as the foundation for more advanced models.</p>
 <p>The goal is to choose the lag length based on information criteria.</p>
 <p>The first step is to determine the lag length using information criteria.</p>
 <p>For CPILFESL and adapting from <a href="https://www.econometrics-with-r.org/14.6-llsuic.html">Econometrics with R</a>, which uses BIC, we will use the AIC criterion.</p>
@@ -864,6 +870,7 @@ C(L) X_t = HV_t + e_t
 </section>
 <section id="estimate-a-fa-var-model" class="level1">
 <h1>Estimate a FA-VAR model</h1>
+<p>The Factor Augmented VAR model is an extension of the standard VAR model seen above. It incorporates latent common factors using the PCA method, allowing one to capture the dynamic relationships among the variables used in the analysis. The FA-VAR predictions can be seen in the forecast above. For the variables CPILFESL, GDPDEF, GDPGROWTH the FA-VAR captures the trends somewhat accurately up until there is a prominent spike. The FA-VAR slightly underestimates any structural shocks, suggesting that the latent factors are not fully capturing their magnitudes. The FA-VAR acts quite similarly to the VAR model estimated. It provides a good benchmark for short-horizon predictions, and it is important to note that it has lower forecast errors than the basic VAR, suggesting that adding latent factors enhances predictive performance.</p>
 <p>The FA-VAR model follows a pure time series approach: it creates an information set <span class="math inline">\(X_t\)</span> from the target variable and its lags, extracts latent factors via PCA, and augments a VAR with these factors.</p>
 <p>Model specification: - <span class="math inline">\(X_t = [y_t, y_{t-1}, \ldots, y_{t-L}]\)</span> (information set created from y and its lags) - Extract <span class="math inline">\(r\)</span> factors from <span class="math inline">\(X_t\)</span> using PCA - Estimate: <span class="math inline">\(y_t = B(L) y_{t-1} + C(L) F_t + u_t\)</span> (augmented VAR with factor lags)</p>
 <p>This approach captures nonlinear patterns in the autocorrelation structure through factor extraction.</p>
@@ -1047,6 +1054,7 @@ C(L) X_t = HV_t + e_t
 </section>
 <section id="estimate-a-dfm-model" class="level1">
 <h1>Estimate a DFM model</h1>
+<p>The Dynamic Factor Model (DFM) was estimated using a state-space representation with PCA initialization and the Kalman filter for forecasting. By extracting a common latent factor from inflation-related series such as core CPI and food prices, the DFM isolates shared movements that represent underlying macroeconomic pressures. The resulting forecasts align closely with observed inflation dynamics but exhibit mild lagging behavior during sharp turning points, indicating a slower adjustment to sudden shocks. The DFM’s strong in-sample fit demonstrates its ability to summarize complex information into a few latent components, offering valuable structural insights into inflation dynamics even if short-term forecast precision remains modest.</p>
 <p>The DFM uses a state-space representation with PCA initialization and Kalman filter for parameter estimation.</p>
 <p>DFM is designed for multivariate data where we want to extract common factors across different economic variables. Unlike FA-VAR (which uses autoregressive lags), DFM works best with actual multivariate series that share common dynamics.</p>
 <p>We’ll use two inflation measures <span class="math inline">\([CPILFESL/GDPDEF, CPIFOOD]\)</span> to extract common factors.</p>
@@ -1247,6 +1255,7 @@ C(L) X_t = HV_t + e_t
 </section>
 <section id="bonus-bayesian-var" class="level1">
 <h1>Bonus: Bayesian VAR</h1>
+<p>The Bayesian VAR model was implemented using the Minnesota-Litterman prior to produce 12-step ahead forecasts for inflation and GDP growth (forecast horizon h = 12). This approach introduces prior beliefs about the size and direction of parameters, effectively shrinking estimates toward more plausible values. As a result, it mitigates issues of overfitting and improves stability in small samples. The forecasts are presented with 90% credible intervals, providing a clear visualization of uncertainty around the central projections. Compared to the traditional VAR, the Bayesian VAR produces smoother and more consistent projections, especially during volatile periods such as the post-pandemic recovery. The credible intervals capture most of the observed variation, demonstrating the model’s ability to account for forecast risk. Overall, the Bayesian VAR delivers the most balanced and policy-relevant predictions among all models, offering both precision and transparency by quantifying uncertainty which is essential for the FED’s decision-making framework.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb38"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>prepare_stan_data <span class="ot">&lt;-</span> <span class="cf">function</span>(cpilfesl_data, gdpdef_data, gdpc1_data, </span>
 <span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>                               <span class="at">p =</span> <span class="dv">4</span>, <span class="at">h =</span> <span class="dv">12</span>, </span>
@@ -1481,13 +1490,21 @@ C(L) X_t = HV_t + e_t
 </section>
 <section id="model-comparison" class="level1">
 <h1>Model Comparison</h1>
+<section id="forecast-evaluation" class="level2">
+<h2 class="anchored" data-anchor-id="forecast-evaluation">Forecast Evaluation</h2>
+<p>The accuracy of the forecasts was evaluated using two standard metrics: the Root Mean Squared Forecast Error (RMSFE) and the Mean Absolute Error (MAE). These measures were computed for both in-sample and out-of-sample periods to assess how well each model predicted inflation and GDP growth. The results show that the Factor-Augmented VAR (FA-VAR) consistently achieves lower forecast errors than the basic VAR, indicating that including latent factors extracted from broader information sets enhances predictive performance. The Dynamic Factor Model (DFM) provides an excellent in-sample fit, effectively capturing the common underlying trends across inflation indicators, but its out-of-sample performance weakens slightly due to slower adjustment to abrupt changes. In contrast, the Bayesian VAR delivers the most stable and reliable forecasts overall, with smaller RMSFE and MAE values across both inflation and growth series. This superior performance reflects the Bayesian model’s ability to incorporate prior information and mitigate overfitting, resulting in smoother forecasts and more realistic uncertainty quantification. Overall, the evaluation confirms that models combining richer informational content or Bayesian regularization produce more accurate and policy-relevant forecasts for the Federal Reserve.</p>
+</section>
+<section id="evaluation-of-the-models" class="level2">
+<h2 class="anchored" data-anchor-id="evaluation-of-the-models">Evaluation of the Models</h2>
+<p>The forecast comparison highlights that models incorporating richer information and prior structure provide more reliable guidance for monetary policy than a simple VAR. While the standard VAR captures short-term dynamics in inflation and output, it performs poorly during periods of structural change such as the COVID-19 shock. The Factor-Augmented VAR (FA-VAR) improves predictive accuracy by summarizing broader macroeconomic signals through latent factors, offering smoother and more stable forecasts for core inflation. The Dynamic Factor Model (DFM) effectively identifies common cyclical components across indicators but tends to lag during abrupt regime shifts. In contrast, the Bayesian VAR demonstrates the most robust and policy-relevant performance: it mitigates overfitting, stabilizes forecasts in volatile periods, and provides credible intervals that quantify uncertainty, an essential feature for risk-based decision-making. Overall, the Bayesian VAR emerges as the preferred tool for the Federal Reserve’s forecasting system, as it balances statistical precision with interpretability and supports transparent, data-driven communication of inflation and growth risks.</p>
+</section>
 </section>
 <section id="c-codes" class="level1">
 <h1>C++ codes</h1>
 <section id="model-metrics" class="level2">
 <h2 class="anchored" data-anchor-id="model-metrics">Model metrics</h2>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb41"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">readLines</span>(<span class="st">"https://raw.githubusercontent.com/pachadotdev/ecod025/refs/heads/code-for-ps1/src/00-model-metrics.h"</span>), <span class="at">sep =</span> <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode cell-code" id="cb41"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">readLines</span>(<span class="st">"../ecod025ps1/src/00-model-metrics.h"</span>), <span class="at">sep =</span> <span class="st">"</span><span class="sc">\n</span><span class="st">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>/* Root Mean Squared Forecast Error (RMSFE) */
 
